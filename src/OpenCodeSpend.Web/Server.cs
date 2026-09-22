@@ -107,12 +107,19 @@ public static class Server
                 if (path == "/login") { ctx.Response.Redirect("/"); return; }
 
                 // экран «Подключить ПК»: всегда на /pair; на / — только пока ни один ПК не подключён
-                if (path == "/pair" || ((path == "/" || path == "/index.html") && deviceService.List(uid!).Count == 0))
+                var deviceCount = deviceService.List(uid!).Count;
+                if (path == "/pair" || ((path == "/" || path == "/index.html") && deviceCount == 0))
                 {
                     var lang = PickLang(ctx);
                     ctx.Response.ContentType = "text/html; charset=utf-8";
                     var ttl = config.PairingTtlMinutes + (lang == "ru" ? " мин" : " min");
-                    await ctx.Response.WriteAsync(PairPage(lang).Replace("TTLMIN", ttl));
+                    // предупреждение о замене — только если ПК уже подключён
+                    var warn = deviceCount > 0
+                        ? (lang == "ru"
+                            ? "Подключение нового компьютера заменит текущий — предыдущий ПК отключится от аккаунта."
+                            : "Connecting a new computer will replace the current one — the previous PC will be disconnected from the account.")
+                        : "";
+                    await ctx.Response.WriteAsync(PairPage(lang).Replace("TTLMIN", ttl).Replace("WARN", warn));
                     return;
                 }
                 await next();
@@ -867,6 +874,8 @@ public static class Server
         body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 500px at 20% -10%,#16203a,transparent 60%),#0b0e14;color:#e7ebf3;font:15px/1.5 "Segoe UI",system-ui,sans-serif}
         .box{width:min(94vw,620px);background:#131824;border:1px solid #212a3b;border-radius:16px;padding:30px;box-shadow:0 20px 50px -30px #000;text-align:center}
         h1{margin:0 0 8px;font-size:22px}
+        .warn{margin:0 0 18px;padding:10px 14px;border-radius:10px;background:rgba(245,165,36,.12);border:1px solid #f5a524;color:#f5a524;font-size:13px;text-align:left}
+        .warn:empty{display:none}
         p{color:#8b93a7;font-size:13px;margin:0 0 22px}
         .code{font:600 13px/1.6 Consolas,monospace;color:#cfe0ff;background:#1b2740;border:1px solid #2f4370;border-radius:12px;padding:16px;word-break:break-all;user-select:all;min-height:56px}
         .row{display:flex;gap:12px;align-items:center;justify-content:center;margin-top:14px;flex-wrap:wrap}
@@ -883,6 +892,7 @@ public static class Server
         </style></head><body>
         <div class="box">
           <h1>H1</h1>
+          <div class="warn">WARN</div>
           <p>INTRO</p>
           <div class="code" id="code">LOADING</div>
           <div class="row"><button id="copy">COPY</button><button id="again">NEW</button></div>
