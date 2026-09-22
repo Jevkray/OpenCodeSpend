@@ -7,6 +7,7 @@
 [![SQLite](https://img.shields.io/badge/SQLite-%D1%85%D1%80%D0%B0%D0%BD%D0%B8%D0%BB%D0%B8%D1%89%D0%B5-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![status](https://img.shields.io/badge/status-active-35c88a)](#)
 ![License](https://img.shields.io/badge/license-MIT-35c88a)
+[![Live Server](https://img.shields.io/badge/Live%20Server-agentstats.we4.online-35c88a?logo=googlechrome&logoColor=white)](https://agentstats.we4.online/)
 
 Мониторинг расходов и активности opencode. Приложение на ПК собирает данные и
 шлёт их на сервер, а на сервере работает веб-панель с аккаунтами: траты, лимиты
@@ -16,6 +17,21 @@ Go, платежи, активные чаты с фазами и кнопкой 
 ![Панель OpenCode Spend](docs/screenshot.png)
 
 *Веб-панель: траты, лимиты Go, разбивка по моделям и активные сессии.*
+
+## 🌐 Готовый сервер — разворачивать не обязательно
+
+Панель уже работает: **https://agentstats.we4.online/**
+
+Свой сервер поднимать не нужно — достаточно авторизоваться и поставить приложение:
+
+1. Открой **https://agentstats.we4.online/** и войди (через Google или по коду доступа к аккаунту).
+2. Скачай приложение из раздела [**Releases**](../../releases) — архив `OpenCodeSpend-win-x64.zip`.
+3. Распакуй и запусти `OpenCodeSpend.exe`.
+4. На сайте открой **«Управление соединением»** и скопируй код подключения.
+5. В приложении нажми **«Подключить сервер»** и вставь код.
+6. Готово — траты, лимиты Go и живые сессии появятся в панели, откуда их можно смотреть с любого устройства.
+
+> Один аккаунт — один компьютер. Хочешь свой сервер — см. раздел «🐳 Развёртывание на сервере».
 
 ## ✨ Возможности
 
