@@ -159,6 +159,15 @@ try
     Check(!gate.Apply("s", true, 20001), "gate: после стопа считаем завершённой");
     Check(!gate.Apply("s", true, 24000), "gate: держим 5с после стопа");
     Check(gate.Apply("s", true, 25001), "gate: после стопа снова реальный статус");
+
+    // ---------- 6. повторный поиск пароля ----------
+    Console.WriteLine("ShouldRetryPassword");
+    var every = TimeSpan.FromSeconds(5);
+    var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    Check(!OpencodeControl.ShouldRetryPassword("secret", t0, t0.AddHours(1), every), "пароль найден — повтор не нужен");
+    Check(!OpencodeControl.ShouldRetryPassword(null, t0, t0.AddSeconds(4), every), "не прошло интервала — повтор не нужен");
+    Check(OpencodeControl.ShouldRetryPassword(null, t0, t0.AddSeconds(5), every), "прошёл интервал — повтор нужен");
+    Check(OpencodeControl.ShouldRetryPassword(null, DateTime.MinValue, t0, every), "первая попытка — повтор нужен");
 }
 catch (Exception e)
 {

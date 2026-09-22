@@ -151,9 +151,26 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
     private bool _verified;
 
     private string? _password;
-    private bool _passwordSearched;
+    private DateTime _passwordTriedAt = DateTime.MinValue;
+    private readonly object _passwordLock = new();
+    private static readonly TimeSpan PasswordRetryEvery = TimeSpan.FromSeconds(5);
 
-    /// <summary>Пароль сервера opencode: из настроек, из окружения или найденный в процессе opencode.</summary>
+    /// <summary>Пора ли повторить поиск пароля: он ещё не найден и с прошлой попытки прошло достаточно времени.</summary>
+    public static bool ShouldRetryPassword(string? found, DateTime lastTryUtc, DateTime nowUtc, TimeSpan every)
+        => string.IsNullOrEmpty(found) && (lastTryUtc == DateTime.MinValue || nowUtc - lastTryUtc >= every);
+
+    /// <summary>Забывает найденный пароль, чтобы следующее обращение искало его заново (например, после 401).</summary>
+    private void ResetPassword()
+    {
+        lock (_passwordLock)
+        {
+            _password = null;
+            _passwordTriedAt = DateTime.MinValue;
+        }
+    }
+
+    /// <summary>Пароль сервера opencode: из настроек, из окружения или найденный в процессе opencode.
+    /// Пока пароль не найден, повторяем поиск не чаще PasswordRetryEvery — сервер может стартовать позже нас.</summary>
     private string? Pw
     {
         get
@@ -161,11 +178,17 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
             if (!string.IsNullOrWhiteSpace(config.OpencodeServerPassword)) return config.OpencodeServerPassword;
             var env = Environment.GetEnvironmentVariable("OPENCODE_SERVER_PASSWORD");
             if (!string.IsNullOrWhiteSpace(env)) return env;
-            if (!_passwordSearched)
+            if (ShouldRetryPassword(_password, _passwordTriedAt, DateTime.UtcNow, PasswordRetryEvery))
             {
-                _passwordSearched = true;
-                _password = DiscoverPassword();
-                if (_password is not null) log.LogInformation("Пароль сервера opencode найден автоматически");
+                lock (_passwordLock)
+                {
+                    if (ShouldRetryPassword(_password, _passwordTriedAt, DateTime.UtcNow, PasswordRetryEvery))
+                    {
+                        _passwordTriedAt = DateTime.UtcNow;
+                        _password = DiscoverPassword();
+                        if (_password is not null) log.LogInformation("Пароль сервера opencode найден автоматически");
+                    }
+                }
             }
             return _password;
         }
@@ -258,6 +281,7 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
                 if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 {
                     Port = port; _verified = true;
+                    ResetPassword();   // пароль устарел — искать заново при следующем обращении
                     return (url, Pw);
                 }
                 var text = (await resp.Content.ReadAsStringAsync(ct)).TrimStart();
@@ -317,6 +341,7 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
                 using var req = new HttpRequestMessage(HttpMethod.Get, r.Value.url + "/event");
                 req.Headers.TryAddWithoutValidation("Accept", "text/event-stream");
                 using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized) { ResetPassword(); await Task.Delay(3000); continue; }
                 if (!resp.IsSuccessStatusCode) { await Task.Delay(3000); continue; }
                 using var stream = await resp.Content.ReadAsStreamAsync();
                 using var reader = new StreamReader(stream);
@@ -329,7 +354,7 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
                     if (json.Length > 0) Events.Apply(json);
                 }
             }
-            catch { }
+            catch { Port = null; _verified = false; }   // соединение потеряно — порт могли сменить, ищем заново
             await Task.Delay(2000);
         }
     }
