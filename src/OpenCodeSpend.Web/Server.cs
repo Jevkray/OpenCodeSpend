@@ -109,8 +109,10 @@ public static class Server
                 // пока ни один компьютер не подключён — показываем экран «Подключить ПК»
                 if ((path == "/" || path == "/index.html") && deviceService.List(uid!).Count == 0)
                 {
+                    var lang = PickLang(ctx);
                     ctx.Response.ContentType = "text/html; charset=utf-8";
-                    await ctx.Response.WriteAsync(PairPage.Replace("TTLMIN", config.PairingTtlMinutes + " мин"));
+                    var ttl = config.PairingTtlMinutes + (lang == "ru" ? " мин" : " min");
+                    await ctx.Response.WriteAsync(PairPage(lang).Replace("TTLMIN", ttl));
                     return;
                 }
                 await next();
@@ -132,19 +134,20 @@ public static class Server
 
         app.MapGet("/login", (HttpContext ctx, GoogleAuth g, GitHubAuth gh) =>
         {
+            var lang = PickLang(ctx);
             // СЕРВЕР: вход через Google/GitHub или по коду доступа к аккаунту
             if (config.IsServer)
             {
-                var prov = (g.Enabled ? GoogleButton : "") + (gh.Enabled ? GitHubButton : "");
-                var html = LoginProviders
+                var prov = (g.Enabled ? GoogleButton(lang) : "") + (gh.Enabled ? GitHubButton(lang) : "");
+                var html = LoginPage(lang)
                     .Replace("PROVIDERS", prov)
-                    .Replace("ERRPLACEHOLDER", LoginError(ctx.Request.Query["e"]));
+                    .Replace("ERRPLACEHOLDER", LoginError(ctx.Request.Query["e"], lang));
                 return Results.Content(html, "text/html; charset=utf-8");
             }
 
             // СБОРЩИК: экран ввода кода подключения этого ПК к серверу
-            var err = ctx.Request.Query.ContainsKey("e") ? LinkError(ctx.Request.Query["e"]) : "";
-            return Results.Content(LinkPage.Replace("ERRPLACEHOLDER", err), "text/html; charset=utf-8");
+            var err = ctx.Request.Query.ContainsKey("e") ? LinkError(ctx.Request.Query["e"], lang) : "";
+            return Results.Content(LinkPage(lang).Replace("ERRPLACEHOLDER", err), "text/html; charset=utf-8");
         });
 
         // вход через провайдеров (Google/GitHub) — с любого браузера
@@ -289,12 +292,14 @@ public static class Server
             }
             catch { }
             // не редиректим сразу: приложение должно увидеть этот адрес и очистить cookie opencode
+            var lang = PickLang(ctx);
+            var bye = lang == "ru" ? "Выхожу из аккаунта opencode…" : "Signing out of opencode…";
             return Results.Content("""
-                <!doctype html><html lang="ru"><head><meta charset="utf-8">
+                <!doctype html><html lang="LANG"><head><meta charset="utf-8">
                 <meta http-equiv="refresh" content="1;url=/opencode">
                 <style>:root{color-scheme:dark}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0e14;color:#8b93a7;font:15px system-ui}</style>
-                </head><body>Выхожу из аккаунта opencode…</body></html>
-                """, "text/html; charset=utf-8");
+                </head><body>BYE</body></html>
+                """.Replace("LANG", lang).Replace("BYE", bye), "text/html; charset=utf-8");
         });
 
         app.MapGet("/auth/unlink", (LinkStore links) => { links.Clear(); return Results.Redirect("/"); });
@@ -770,6 +775,13 @@ public static class Server
         return app;
     }
 
+    /// <summary>Язык интерфейса из Accept-Language: русский, если браузер просит ru, иначе английский.</summary>
+    static string PickLang(HttpContext ctx)
+    {
+        var al = ctx.Request.Headers.AcceptLanguage.ToString();
+        return al.TrimStart().StartsWith("ru", StringComparison.OrdinalIgnoreCase) ? "ru" : "en";
+    }
+
     private static DateTimeOffset _accountTried = DateTimeOffset.MinValue;
 
     /// <summary>Дополняет привязку данными аккаунта с сервера (для старых привязок).</summary>
@@ -794,22 +806,30 @@ public static class Server
         return link;
     }
 
-    private static string LinkError(string? e) => e switch
+    private static string LinkError(string? e, string lang)
     {
-        "bad" => "<div class=\"err\">Код не распознан — скопируйте его целиком</div>",
-        "reject" => "<div class=\"err\">Сервер отклонил код: он истёк или уже использован</div>",
-        "net" => "<div class=\"err\">Не удалось связаться с сервером</div>",
-        _ => "<div class=\"err\">Не удалось подключиться, попробуйте снова</div>",
-    };
+        var ru = lang == "ru";
+        return e switch
+        {
+            "bad" => $"<div class=\"err\">{(ru ? "Код не распознан — скопируйте его целиком" : "Code not recognized — copy it in full")}</div>",
+            "reject" => $"<div class=\"err\">{(ru ? "Сервер отклонил код: он истёк или уже использован" : "The server rejected the code: it expired or was already used")}</div>",
+            "net" => $"<div class=\"err\">{(ru ? "Не удалось связаться с сервером" : "Could not reach the server")}</div>",
+            _ => $"<div class=\"err\">{(ru ? "Не удалось подключиться, попробуйте снова" : "Could not connect, please try again")}</div>",
+        };
+    }
 
-    private static string LoginError(string? e) => e switch
+    private static string LoginError(string? e, string lang)
     {
-        "state" => "<div class=\"err\">Сессия входа устарела — попробуйте ещё раз</div>",
-        "denied" => "<div class=\"err\">Вход отменён</div>",
-        "auth" => "<div class=\"err\">Не удалось получить аккаунт у провайдера</div>",
-        "code" => "<div class=\"err\">Код доступа не подошёл</div>",
-        _ => "",
-    };
+        var ru = lang == "ru";
+        return e switch
+        {
+            "state" => $"<div class=\"err\">{(ru ? "Сессия входа устарела — попробуйте ещё раз" : "The sign-in session expired — please try again")}</div>",
+            "denied" => $"<div class=\"err\">{(ru ? "Вход отменён" : "Sign-in cancelled")}</div>",
+            "auth" => $"<div class=\"err\">{(ru ? "Не удалось получить аккаунт у провайдера" : "Could not get the account from the provider")}</div>",
+            "code" => $"<div class=\"err\">{(ru ? "Код доступа не подошёл" : "The access code didn't match")}</div>",
+            _ => "",
+        };
+    }
 
     private const string WaitPage = """
         <!doctype html><html lang="ru"><head><meta charset="utf-8">
@@ -832,10 +852,16 @@ public static class Server
         """;
 
     /// <summary>Стартовый экран сервера: код, которым компьютер подключается к этой сессии.</summary>
-    private const string PairPage = """
-        <!doctype html><html lang="ru"><head><meta charset="utf-8">
+    private static string PairPage(string lang)
+    {
+        var ru = lang == "ru";
+        var js = ru
+            ? "var T = { failed: \"не удалось получить код\", err: \"ошибка: \", newCode: \"новый код через \", sec: \" с\", connected: \"Компьютер подключён, открываю панель…\", copied: \"Код скопирован\" };"
+            : "var T = { failed: \"failed to get code\", err: \"error: \", newCode: \"new code in \", sec: \" s\", connected: \"Computer connected, opening the panel…\", copied: \"Code copied\" };";
+        return """
+        <!doctype html><html lang="LANG"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>OpenCode Spend — подключение</title>
+        <title>TITLE</title>
         <style>
         :root{color-scheme:dark}
         body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 500px at 20% -10%,#16203a,transparent 60%),#0b0e14;color:#e7ebf3;font:15px/1.5 "Segoe UI",system-ui,sans-serif}
@@ -856,17 +882,17 @@ public static class Server
         .b:hover{filter:brightness(1.08)}
         </style></head><body>
         <div class="box">
-          <h1>Подключить ПК</h1>
-          <p>Скопируйте код и вставьте его в приложении OpenCode Spend на компьютере, где стоит opencode.
-             В коде зашит адрес этого сервера, вводить его не нужно.</p>
-          <div class="code" id="code">получаю код…</div>
-          <div class="row"><button id="copy">Скопировать код</button><button id="again">Новый код</button></div>
-          <div class="hint">Код действует TTLMIN и сгорает после подключения.</div>
+          <h1>H1</h1>
+          <p>INTRO</p>
+          <div class="code" id="code">LOADING</div>
+          <div class="row"><button id="copy">COPY</button><button id="again">NEW</button></div>
+          <div class="hint">HINT</div>
           <div class="ttl-bar"><i id="ttlFill"></i></div>
           <div class="ttl" id="ttl">—</div>
           <div class="wait" id="wait"></div>
         </div>
         <script>
+          JSTEXTS
           var current = "", expiresAt = 0, ttlMs = 0;
           async function gen() {
             try {
@@ -874,9 +900,9 @@ public static class Server
               current = r.code || "";
               expiresAt = r.expiresAt ? new Date(r.expiresAt).getTime() : 0;
               ttlMs = r.expiresAt ? new Date(r.expiresAt).getTime() - Date.now() : 0;
-              document.getElementById("code").textContent = current || "не удалось получить код";
+              document.getElementById("code").textContent = current || T.failed;
               tick();
-            } catch (e) { document.getElementById("code").textContent = "ошибка: " + e.message; }
+            } catch (e) { document.getElementById("code").textContent = T.err + e.message; }
           }
           function tick() {
             var left = Math.max(0, expiresAt - Date.now());
@@ -886,29 +912,44 @@ public static class Server
             if (fill) fill.style.width = share + "%";
             if (bar) bar.className = "ttl-bar" + (share <= 15 ? " bad" : share <= 40 ? " warn" : "");
             var el = document.getElementById("ttl");
-            if (el) el.textContent = "новый код через " + Math.round(left / 1000) + " с";
+            if (el) el.textContent = T.newCode + Math.round(left / 1000) + T.sec;
             if (left <= 0) { expiresAt = 0; gen(); }
           }
           async function poll() {
             try {
               const d = await fetch("/api/devices").then(function (x) { return x.json(); });
-              if (d.devices && d.devices.length) { document.getElementById("wait").textContent = "Компьютер подключён, открываю панель…"; location.reload(); }
+              if (d.devices && d.devices.length) { document.getElementById("wait").textContent = T.connected; location.reload(); }
             } catch (e) { }
           }
           document.getElementById("again").onclick = gen;
           document.getElementById("copy").onclick = function () {
-            navigator.clipboard.writeText(current).then(function () { document.getElementById("wait").textContent = "Код скопирован"; });
+            navigator.clipboard.writeText(current).then(function () { document.getElementById("wait").textContent = T.copied; });
           };
           gen();
           setInterval(tick, 1000);
           setInterval(poll, 2000);
         </script></body></html>
-        """;
+        """
+        .Replace("LANG", lang)
+        .Replace("TITLE", ru ? "OpenCode Spend — подключение" : "OpenCode Spend — pairing")
+        .Replace("H1", ru ? "Подключить ПК" : "Connect a PC")
+        .Replace("INTRO", ru
+            ? "Скопируйте код и вставьте его в приложении OpenCode Spend на компьютере, где стоит opencode.\n             В коде зашит адрес этого сервера, вводить его не нужно."
+            : "Copy the code and paste it into the OpenCode Spend app on the computer running opencode.\n             The server address is embedded in the code, you don't need to type it.")
+        .Replace("LOADING", ru ? "получаю код…" : "getting code…")
+        .Replace("COPY", ru ? "Скопировать код" : "Copy code")
+        .Replace("NEW", ru ? "Новый код" : "New code")
+        .Replace("HINT", ru ? "Код действует TTLMIN и сгорает после подключения." : "The code is valid for TTLMIN and expires after a successful pairing.")
+        .Replace("JSTEXTS", js);
+    }
 
-    private const string LinkPage = """
-        <!doctype html><html lang="ru"><head><meta charset="utf-8">
+    private static string LinkPage(string lang)
+    {
+        var ru = lang == "ru";
+        return """
+        <!doctype html><html lang="LANG"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>Подключение — OpenCode Spend</title>
+        <title>TITLE</title>
         <style>
         :root{color-scheme:dark}
         body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 500px at 20% -10%,#16203a,transparent 60%),#0b0e14;color:#e7ebf3;font:15px/1.5 "Segoe UI",system-ui,sans-serif}
@@ -925,15 +966,23 @@ public static class Server
         </style></head><body>
         <div class="box">
           <h1>OpenCode Spend</h1>
-          <p>Вставьте код подключения из веб-панели сервера<br>раздел «Добавить ПК» → «Получить код»</p>
+          <p>INTRO</p>
           <form method="post" action="/link">
             <textarea name="code" rows="4" autofocus placeholder="OCSP1.…"></textarea>
-            <button type="submit">Подключить</button>
+            <button type="submit">CONNECT</button>
           </form>
           ERRPLACEHOLDER
-          <a class="back" href="/">← Назад</a>
+          <a class="back" href="/">BACK</a>
         </div></body></html>
-        """;
+        """
+        .Replace("LANG", lang)
+        .Replace("TITLE", ru ? "Подключение — OpenCode Spend" : "Pairing — OpenCode Spend")
+        .Replace("INTRO", ru
+            ? "Вставьте код подключения из веб-панели сервера<br>раздел «Добавить ПК» → «Получить код»"
+            : "Paste the pairing code from the server web panel<br>section \"Add a PC\" → \"Get code\"")
+        .Replace("CONNECT", ru ? "Подключить" : "Connect")
+        .Replace("BACK", ru ? "← Назад" : "← Back");
+    }
 
     /// <summary>Одноразовый state для OAuth: кладём в cookie, сверяем на возврате.</summary>
     private static string NewState(HttpContext ctx)
@@ -1048,24 +1097,27 @@ public static class Server
         _ => ("30 дней", now.AddDays(-30)),
     };
 
-    private const string GoogleButton = """
+    private static string GoogleButton(string lang) => $"""
         <a class="p" href="/auth/google">
           <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.4 5.4 2.5 13.3l7.8 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.5 2.9-2.2 5.4-4.7 7l7.6 5.9c4.4-4.1 6.9-10.1 6.9-17.4z"/><path fill="#FBBC05" d="M10.3 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.1.8-4.6l-7.8-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.5 10.7l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.6l-7.6-5.9c-2.1 1.4-4.8 2.3-7.7 2.3-6.3 0-11.7-3.7-13.7-9.1l-7.8 6.1C6.4 42.6 14.6 48 24 48z"/></svg>
-          Продолжить с Google
+          {(lang == "ru" ? "Продолжить с Google" : "Continue with Google")}
         </a>
         """;
 
-    private const string GitHubButton = """
+    private static string GitHubButton(string lang) => $"""
         <a class="p gh" href="/auth/github">
           <svg width="18" height="18" viewBox="0 0 496 512"><path fill="currentColor" d="M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8z"/></svg>
-          Продолжить с GitHub
+          {(lang == "ru" ? "Продолжить с GitHub" : "Continue with GitHub")}
         </a>
         """;
 
-    private const string LoginProviders = """
-        <!doctype html><html lang="ru"><head><meta charset="utf-8">
+    private static string LoginPage(string lang)
+    {
+        var ru = lang == "ru";
+        return """
+        <!doctype html><html lang="LANG"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>Вход — OpenCode Spend</title>
+        <title>TITLE</title>
         <style>
         :root{color-scheme:dark}
         body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 500px at 20% -10%,#16203a,transparent 60%),#0b0e14;color:#e7ebf3;font:15px/1.5 "Segoe UI",system-ui,sans-serif}
@@ -1080,18 +1132,24 @@ public static class Server
         </style></head><body>
         <div class="box">
           <h1>OpenCode Spend</h1>
-          <p>Войдите, чтобы смотреть статистику с любого устройства</p>
+          <p>LEAD</p>
           PROVIDERS
           <div style="margin-top:18px;border-top:1px solid #212a3b;padding-top:16px">
-            <p style="margin:0 0 10px">Или войдите по коду доступа к аккаунту</p>
+            <p style="margin:0 0 10px">ORCODE</p>
             <form method="post" action="/login-code" style="width:100%;background:none;border:0;padding:0;box-shadow:none">
               <input name="code" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocomplete="off"
                      style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1px solid #2a3548;background:#0f131c;color:#e7ebf3;font:inherit" />
-              <button type="submit" style="width:100%;margin-top:12px;padding:11px;border:0;border-radius:10px;background:#4f8cff;color:#fff;font:inherit;font-weight:600;cursor:pointer">Войти по коду</button>
+              <button type="submit" style="width:100%;margin-top:12px;padding:11px;border:0;border-radius:10px;background:#4f8cff;color:#fff;font:inherit;font-weight:600;cursor:pointer">SIGNINCODE</button>
             </form>
           </div>
           ERRPLACEHOLDER
         </div></body></html>
-        """;
+        """
+        .Replace("LANG", lang)
+        .Replace("TITLE", ru ? "Вход — OpenCode Spend" : "Sign in — OpenCode Spend")
+        .Replace("LEAD", ru ? "Войдите, чтобы смотреть статистику с любого устройства" : "Sign in to view your stats from any device")
+        .Replace("ORCODE", ru ? "Или войдите по коду доступа к аккаунту" : "Or sign in with an account access code")
+        .Replace("SIGNINCODE", ru ? "Войти по коду" : "Sign in with code");
+    }
 
 }

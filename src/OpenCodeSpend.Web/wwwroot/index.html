@@ -18,17 +18,19 @@
       <div class="brand-sub" id="tzLabel">—</div>
     </div>
   </div>
+  <span class="status" id="status"><span class="dot"></span><span data-i18n="connecting">подключение…</span></span>
   <div class="controls">
-    <span class="status" id="status"><span class="dot"></span>подключение…</span>
-    <div class="segmented" id="modes" title="Показывать только платные операции или все">
-      <button data-mode="paid" class="active">Затраты</button>
-      <button data-mode="all">Все</button>
+    <div class="segmented" id="modes" data-i18n-title="modesTitle" title="Показывать только платные операции или все">
+      <button data-mode="paid" class="active" data-i18n="modePaid">Затраты</button>
+      <button data-mode="all" data-i18n="modeAll">Все</button>
     </div>
-    <button class="btn danger" id="stopBtn" title="Активные сессии: посмотреть и остановить">Сессии<span id="stopCount"></span></button>
-    <button class="btn" id="serverLinkBtn" hidden title="Привязать этот компьютер к серверу по коду">Подключить сервер</button>
-    <button class="btn accent" id="devicesBtn" hidden title="Состояние соединения аккаунта с компьютером">Управление соединением</button>
-    <span class="account" id="userLabel"></span>
+    <button class="btn danger" id="stopBtn" data-i18n-title="sessionsTitle" title="Активные сессии: посмотреть и остановить"><span data-i18n="sessionsBtn">Сессии</span><span id="stopCount"></span></button>
+    <button class="btn" id="serverLinkBtn" hidden data-i18n-title="connectServerTitle" data-i18n="connectServer" title="Привязать этот компьютер к серверу по коду">Подключить сервер</button>
+    <button class="btn accent" id="devicesBtn" hidden data-i18n-title="connectionMgmtTitle" data-i18n="connectionMgmt" title="Состояние соединения аккаунта с компьютером">Управление соединением</button>
+    <button class="btn lang" id="langBtn" title="Language">EN</button>
   </div>
+  <span class="account" id="userLabel"></span>
+  <button class="btn menu-btn" id="menuBtn" type="button" aria-expanded="false" aria-label="Меню" data-i18n-title="menu" title="Меню" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M3 6h18v2H3V6Zm0 5h18v2H3v-2Zm0 5h18v2H3v-2Z"/></svg></button>
 </header>
 
 <main>
@@ -38,21 +40,21 @@
 
 
 
-  <div class="section-label">Профиль opencode — данные с их стороны <span id="accountLabel"></span></div>
+  <div class="section-label"><span data-i18n="profileTitle">Профиль opencode — данные с их стороны</span> <span id="accountLabel"></span></div>
 
   <section class="grid">
     <article class="card span-5">
-      <div class="card-head"><h2 data-ico="gauge">OpenCode Go — лимиты</h2><span class="hint" id="siteLimitsHint">&nbsp;</span></div>
+      <div class="card-head"><h2 data-ico="gauge" data-i18n="goLimits">OpenCode Go — лимиты</h2><span class="hint" id="siteLimitsHint">&nbsp;</span></div>
       <div class="budgets" id="siteLimits"></div>
     </article>
 
     <article class="card span-7">
       <div class="card-head">
-        <h2 data-ico="calendar">Траты по дням</h2>
+        <h2 data-ico="calendar" data-i18n="spendingByDay">Траты по дням</h2>
         <div class="card-tools">
-          <button id="dayPrev" title="Предыдущий месяц">‹</button>
+          <button id="dayPrev" data-i18n-title="prevMonth" title="Предыдущий месяц">‹</button>
           <div id="dayMonth" class="month-picker"></div>
-          <button id="dayNext" title="Следующий месяц">›</button>
+          <button id="dayNext" data-i18n-title="nextMonth" title="Следующий месяц">›</button>
           <span class="hint" id="siteDayHint"></span>
         </div>
       </div>
@@ -60,47 +62,47 @@
     </article>
 
     <article class="card span-5">
-      <div class="card-head"><h2 data-ico="card">Подписка и платежи</h2><span class="hint" id="subHint"></span></div>
+      <div class="card-head"><h2 data-ico="card" data-i18n="subPayments">Подписка и платежи</h2><span class="hint" id="subHint"></span></div>
       <div class="sub-block" id="subscription"></div>
       <div class="table-wrap" style="margin-top:10px">
         <table class="data-table" id="paymentsTable">
-          <thead><tr><th>Дата</th><th>Платёж</th><th class="num">Сумма</th></tr></thead>
+          <thead><tr><th data-i18n="colDate">Дата</th><th data-i18n="colPayment">Платёж</th><th class="num" data-i18n="colAmount">Сумма</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </article>
 
     <article class="card span-7">
-      <div class="card-head"><h2 data-ico="bars">Модели (сайт)</h2><span class="hint" id="siteModelsHint"></span></div>
+      <div class="card-head"><h2 data-ico="bars" data-i18n="modelsSite">Модели (сайт)</h2><span class="hint" id="siteModelsHint"></span></div>
       <div class="chart-box"><canvas id="chartSiteModels"></canvas></div>
     </article>
 
     <article class="card span-12">
-      <div class="card-head"><h2 data-ico="chat">Чаты — реальная стоимость</h2><span class="hint" id="siteSessionsHint"></span></div>
+      <div class="card-head"><h2 data-ico="chat" data-i18n="chatsRealCost">Чаты — реальная стоимость</h2><span class="hint" id="siteSessionsHint"></span></div>
       <div class="table-wrap">
         <table class="data-table" id="siteSessionsTable">
-          <thead><tr><th>Чат</th><th>Агент</th><th class="num">Шаги</th><th class="num">Токены</th><th class="num">Стоимость</th></tr></thead>
+          <thead><tr><th data-i18n="colChat">Чат</th><th data-i18n="colAgent">Агент</th><th class="num" data-i18n="colSteps">Шаги</th><th class="num" data-i18n="colTokens">Токены</th><th class="num" data-i18n="colCost">Стоимость</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </article>
 
     <article class="card span-12">
-      <div class="card-head"><h2 data-ico="list">Последние запросы (сайт)</h2><span class="hint" id="siteRecentHint"></span></div>
+      <div class="card-head"><h2 data-ico="list" data-i18n="recentSite">Последние запросы (сайт)</h2><span class="hint" id="siteRecentHint"></span></div>
       <div class="table-wrap">
         <table class="data-table" id="siteRecentTable">
-          <thead><tr><th>Время</th><th>Модель</th><th class="num">Вх.</th><th class="num">Вых.</th><th class="num">Кэш</th><th class="num">Стоимость</th></tr></thead>
+          <thead><tr><th data-i18n="colTime">Время</th><th data-i18n="colModel">Модель</th><th class="num" data-i18n="colIn">Вх.</th><th class="num" data-i18n="colOut">Вых.</th><th class="num" data-i18n="colCache">Кэш</th><th class="num" data-i18n="colCost">Стоимость</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </article>
   </section>
 
-  <div class="section-label">Локально — что выполняется сейчас <span id="localLabel"></span></div>
+  <div class="section-label"><span data-i18n="localTitle">Локально — что выполняется сейчас</span> <span id="localLabel"></span></div>
 
   <section class="grid">
     <article class="card span-12">
-      <div class="card-head"><h2 data-ico="pulse">Прямой эфир</h2><span class="hint" id="liveHint">&nbsp;</span></div>
+      <div class="card-head"><h2 data-ico="pulse" data-i18n="live">Прямой эфир</h2><span class="hint" id="liveHint">&nbsp;</span></div>
       <div class="live" id="live"></div>
     </article>
   </section>
@@ -113,102 +115,102 @@
 
 <dialog id="stopDialog" class="stop-dialog">
   <div class="stop-head">
-    <h2 data-ico="pulse">Активные сессии</h2>
-    <button type="button" class="x" id="stopClose" title="Закрыть">✕</button>
+    <h2 data-ico="pulse" data-i18n="activeSessions">Активные сессии</h2>
+    <button type="button" class="x" id="stopClose" data-i18n-title="close" title="Закрыть">✕</button>
   </div>
-  <div id="stopBody" class="stop-body"><div class="empty">ищем активные сессии…</div></div>
+  <div id="stopBody" class="stop-body"><div class="empty" data-i18n="searchingSessions">ищем активные сессии…</div></div>
   <div class="stop-foot">
     <span class="hint" id="stopSummary"></span>
-    <button type="button" class="btn" id="stopRefresh">Обновить</button>
+    <button type="button" class="btn" id="stopRefresh" data-i18n="refresh">Обновить</button>
   </div>
 </dialog>
 
 <dialog id="devicesDialog" class="stop-dialog server-dialog">
   <div class="stop-head">
-    <h2 data-ico="server">Управление соединением</h2>
-    <button type="button" class="x" id="devicesClose" title="Закрыть">✕</button>
+    <h2 data-ico="server" data-i18n="connectionMgmt">Управление соединением</h2>
+    <button type="button" class="x" id="devicesClose" data-i18n-title="close" title="Закрыть">✕</button>
   </div>
   <div class="stop-body">
     <div class="srv-state" id="connState"><span class="dot"></span><span class="srv-state-text">—</span></div>
     <div class="srv-row">
-      <span class="srv-label">Аккаунт</span>
+      <span class="srv-label" data-i18n="account">Аккаунт</span>
       <span class="srv-value" id="connAccount">—</span>
     </div>
     <div class="srv-block">
       <div class="srv-block-head">
-        <span>Компьютер аккаунта</span>
+        <span data-i18n="accountComputer">Компьютер аккаунта</span>
         <span class="hint" id="connHint"></span>
       </div>
       <div id="connDevices" class="srv-devices"><div class="empty">—</div></div>
     </div>
     <div class="srv-foot">
-      <span class="hint">Разрыв отключает компьютер от аккаунта на всех устройствах.</span>
-      <button type="button" class="btn danger" id="disconnectAll">Разорвать соединение с ПК</button>
+      <span class="hint" data-i18n="unlinkInfo">Разрыв отключает компьютер от аккаунта на всех устройствах.</span>
+      <button type="button" class="btn danger" id="disconnectAll" data-i18n="unlinkPC">Разорвать соединение с ПК</button>
     </div>
   </div>
 </dialog>
 
 <dialog id="serverDialog" class="stop-dialog server-dialog">
   <div class="stop-head">
-    <h2 data-ico="server">Подключение к серверу</h2>
-    <button type="button" class="x" id="serverClose" title="Закрыть">✕</button>
+    <h2 data-ico="server" data-i18n="serverConnection">Подключение к серверу</h2>
+    <button type="button" class="x" id="serverClose" data-i18n-title="close" title="Закрыть">✕</button>
   </div>
   <div class="stop-body">
     <div class="srv-state" id="srvState">
       <span class="dot"></span><span class="srv-state-text">—</span>
     </div>
     <div class="srv-row">
-      <span class="srv-label">Аккаунт</span>
+      <span class="srv-label" data-i18n="account">Аккаунт</span>
       <span class="srv-value" id="srvAccount">—</span>
     </div>
     <div class="srv-row">
-      <span class="srv-label">Адрес сервера</span>
+      <span class="srv-label" data-i18n="serverAddress">Адрес сервера</span>
       <span class="srv-value">
         <span class="srv-url" id="srvUrl">—</span>
-        <button type="button" class="btn ghost" id="serverCopy" title="Скопировать адрес">Копировать</button>
+        <button type="button" class="btn ghost" id="serverCopy" data-i18n-title="copyAddressTitle" data-i18n="copy" title="Скопировать адрес">Копировать</button>
       </span>
     </div>
     <div class="srv-block">
       <div class="srv-block-head">
-        <span>Компьютеры в аккаунте</span>
+        <span data-i18n="computersInAccount">Компьютеры в аккаунте</span>
         <span class="hint" id="srvDevicesHint"></span>
       </div>
       <div id="srvDevices" class="srv-devices"><div class="empty">—</div></div>
     </div>
     <div class="srv-foot">
-      <span class="hint">Отключение разрывает связь этого компьютера с сервером.</span>
-      <button type="button" class="btn danger" id="serverUnlink">Отключиться от сервера</button>
+      <span class="hint" data-i18n="disconnectInfo">Отключение разрывает связь этого компьютера с сервером.</span>
+      <button type="button" class="btn danger" id="serverUnlink" data-i18n="disconnectFromServer">Отключиться от сервера</button>
     </div>
   </div>
 </dialog>
 
 <dialog id="accountDialog" class="stop-dialog">
   <div class="stop-head">
-    <h2 data-ico="server">Код доступа к аккаунту</h2>
-    <button type="button" class="x" id="accountClose" title="Закрыть">✕</button>
+    <h2 data-ico="server" data-i18n="accountCodeTitle">Код доступа к аккаунту</h2>
+    <button type="button" class="x" id="accountClose" data-i18n-title="close" title="Закрыть">✕</button>
   </div>
   <div class="stop-body">
-    <p class="hint" style="margin:0 0 12px">
+    <p class="hint" style="margin:0 0 12px" data-i18n="saveCodeHint">
       Сохраните код — по нему можно войти в этот аккаунт с любого устройства и видеть те же ПК.
     </p>
     <div class="pair-box">
-      <button type="button" class="btn accent" id="accountCodeBtn">Получить код</button>
+      <button type="button" class="btn accent" id="accountCodeBtn" data-i18n="getCode">Получить код</button>
       <div class="pair-code" id="accountCodeBox" hidden></div>
     </div>
-    <p class="hint" style="margin-top:14px">После создания нового кода старый перестаёт работать.</p>
+    <p class="hint" style="margin-top:14px" data-i18n="newCodeHint">После создания нового кода старый перестаёт работать.</p>
   </div>
 </dialog>
 
 <dialog id="confirmDialog" class="stop-dialog confirm-dialog">
   <div class="stop-head">
-    <h2 id="confirmTitle">Подтвердите действие</h2>
-    <button type="button" class="x" id="confirmClose" title="Закрыть">✕</button>
+    <h2 id="confirmTitle" data-i18n="confirmAction">Подтвердите действие</h2>
+    <button type="button" class="x" id="confirmClose" data-i18n-title="close" title="Закрыть">✕</button>
   </div>
   <div class="stop-body">
     <p class="hint" id="confirmText" style="margin:0 0 4px"></p>
     <div class="srv-foot">
-      <button type="button" class="btn ghost" id="confirmNo">Отмена</button>
-      <button type="button" class="btn danger" id="confirmYes">Разорвать</button>
+      <button type="button" class="btn ghost" id="confirmNo" data-i18n="cancel">Отмена</button>
+      <button type="button" class="btn danger" id="confirmYes" data-i18n="unlink">Разорвать</button>
     </div>
   </div>
 </dialog>
