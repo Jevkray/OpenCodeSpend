@@ -80,6 +80,7 @@ body {
 }
 .btn:hover { border-color: #2f3b55; background: var(--surface-2); }
 .btn:disabled { opacity: .55; cursor: progress; }
+.btn[href] { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .btn.sync { border-color: #2b3c60; }
 .btn.danger { border-color: #40232c; color: #ffc9cd; }
 .btn.danger:hover { background: #241318; border-color: #6b3040; }

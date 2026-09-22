@@ -106,8 +106,8 @@ public static class Server
                 ctx.Items["userId"] = uid;
                 if (path == "/login") { ctx.Response.Redirect("/"); return; }
 
-                // пока ни один компьютер не подключён — показываем экран «Подключить ПК»
-                if ((path == "/" || path == "/index.html") && deviceService.List(uid!).Count == 0)
+                // экран «Подключить ПК»: всегда на /pair; на / — только пока ни один ПК не подключён
+                if (path == "/pair" || ((path == "/" || path == "/index.html") && deviceService.List(uid!).Count == 0))
                 {
                     var lang = PickLang(ctx);
                     ctx.Response.ContentType = "text/html; charset=utf-8";
@@ -918,7 +918,7 @@ public static class Server
           async function poll() {
             try {
               const d = await fetch("/api/devices").then(function (x) { return x.json(); });
-              if (d.devices && d.devices.length) { document.getElementById("wait").textContent = T.connected; location.reload(); }
+              if (d.devices && d.devices.length) { document.getElementById("wait").textContent = T.connected; location.href = "/"; }
             } catch (e) { }
           }
           document.getElementById("again").onclick = gen;
