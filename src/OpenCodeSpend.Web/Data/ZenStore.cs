@@ -7,8 +7,6 @@ public sealed class ZenStore(Db db)
 {
     private readonly Db _db = db;
 
-    public Task EnsureSchemaAsync(CancellationToken ct = default) { _db.EnsureSchema(); return Task.CompletedTask; }
-
     private static string Owner(string? uid) => string.IsNullOrWhiteSpace(uid) ? Db.LocalUser : uid;
 
     public Task ReplaceAsync(string period, string scope, List<Dictionary<string, string>> rows, string? uid = null, CancellationToken ct = default)

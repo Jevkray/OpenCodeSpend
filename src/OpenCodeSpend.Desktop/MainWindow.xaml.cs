@@ -129,10 +129,7 @@ public partial class MainWindow : Window
                     GoToServer();
                 }
                 if (!CaptureExists() && !_capturing && !InOpenCodeFlow())
-                {
-                    _captureChecked = false;
                     EnsureOpencodeConnected();
-                }
             };
             _watchTimer.Start();
 
@@ -156,7 +153,7 @@ public partial class MainWindow : Window
 
     private readonly Queue<string> _queue = new();
     private readonly HashSet<string> _visited = new();
-    private bool _capturing, _captureStarted, _captureSaved, _captureChecked, _opencodeCleared, _firstLoad, _loginModal;
+    private bool _capturing, _firstLoad, _loginModal;
 
     /// <summary>Выход: стираем ВСЕ куки браузера, забываем сессию opencode и перезапускаем приложение.</summary>
     private async Task LogoutAndRestartAsync()
@@ -205,9 +202,6 @@ public partial class MainWindow : Window
     private void StartOpencodeLogin()
     {
         _capturing = true;
-        _captureChecked = true;
-        _captureStarted = false;
-        _captureSaved = false;
         _queue.Clear();
         _visited.Clear();
         HideOverlay();
@@ -290,12 +284,9 @@ public partial class MainWindow : Window
             if (!_capturing)
             {
                 _capturing = true;
-                _captureStarted = false;
-                _captureSaved = false;
                 _queue.Clear();
                 _visited.Clear();
             }
-        _captureChecked = true;
         }
 
 
@@ -320,10 +311,7 @@ public partial class MainWindow : Window
         try { if (File.Exists(CapturePath)) File.Delete(CapturePath); } catch { }
         _queue.Clear();
         _visited.Clear();
-        _captureStarted = false;
-        _captureSaved = false;
         _capturing = false;
-        _captureChecked = false;
         _pusher = null;
         ShowOverlay("Аккаунт opencode отключился — войдите заново", loginButton: true);
     }
@@ -360,7 +348,6 @@ public partial class MainWindow : Window
                 await store.SetStateAsync("profile_cookie", cookie, null);
         }
         catch { }
-        _captureChecked = true;
         if (_pusher is not null) await _pusher.SyncAsync();   // cookie уходит на сервер сразу
         GoToServer();                                          // один переход — сразу в панель
         await Task.Delay(500);

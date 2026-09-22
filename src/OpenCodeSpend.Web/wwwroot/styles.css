@@ -40,7 +40,7 @@ body {
 /* ---------- topbar ---------- */
 .topbar {
   position: sticky; top: 0; z-index: 20;
-  display: flex; align-items: center; justify-content: flex-start; gap: 16px;
+  display: flex; align-items: center; justify-content: flex-start; gap: 16px; flex-wrap: nowrap;
   padding: 12px clamp(12px, 3vw, 28px);
   padding-left: max(clamp(12px,3vw,28px), env(safe-area-inset-left));
   padding-right: max(clamp(12px,3vw,28px), env(safe-area-inset-right));
@@ -49,15 +49,17 @@ body {
   border-bottom: 1px solid var(--border-soft);
 }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand > div { min-width: 0; }
 .logo {
   display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px;
   color: #cfe0ff; background: linear-gradient(145deg, #1d2b4d, #131a2b);
   border: 1px solid #26324c; flex: none;
 }
-.brand-title { font-weight: 650; letter-spacing: .2px; }
+.brand-title { font-weight: 650; letter-spacing: .2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .brand-sub { color: var(--faint); font-size: 12px; }
-.controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+.controls { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; justify-content: flex-end; margin-left: auto; flex: 0 1 auto; min-width: 0; }
 .menu-btn { display: none; }
+.controls .btn, .segmented button, .account { white-space: nowrap; flex: none; }
 
 .segmented { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
 .segmented button {
@@ -80,7 +82,7 @@ body {
 .btn.danger.on { background: #3a1620; border-color: var(--bad); color: #ffd9dc; }
 .btn.danger:disabled { opacity: .45; }
 
-.status { color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 8px; }
+.status { color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px rgba(53,200,138,.12); }
 .status.err .dot { background: var(--bad); box-shadow: 0 0 0 3px rgba(242,85,90,.14); }
 
@@ -366,14 +368,15 @@ dialog.stop-dialog::backdrop { background: rgba(4, 6, 10, .68); backdrop-filter:
   .span-4, .span-5, .span-7, .span-8 { grid-column: span 12; }
 }
 
-@media (max-width: 768px) {
-  .topbar { flex-wrap: wrap; gap: 8px; }
-  .brand { order: 1; flex: 1 1 auto; min-width: 0; }
+@media (max-width: 1500px) {
   .brand-sub { display: none; }
+  .status { max-width: 240px; }
+}
+
+@media (max-width: 1200px) {
+  .brand { order: 1; flex: 1 1 auto; min-width: 0; }
   .account { order: 2; margin-left: 0; flex: none; }
-  .account .name { display: none; }              /* имя пользователя скрыто */
   .menu-btn { order: 3; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 40px; padding: 0; flex: none; }
-  .status { order: 4; flex: 1 1 100%; }          /* статус — отдельной строкой под шапкой */
 
   /* кнопки шапки → выпадающее меню */
   .controls {
@@ -387,6 +390,12 @@ dialog.stop-dialog::backdrop { background: rgba(4, 6, 10, .68); backdrop-filter:
   .controls .btn { width: 100%; min-height: 44px; }
   .controls .segmented { width: 100%; }
   .controls .segmented button { flex: 1 1 0; min-height: 40px; }
+}
+
+@media (max-width: 768px) {
+  .brand-sub { display: none; }
+  .account .name { display: none; }              /* имя пользователя скрыто */
+  .status { order: 4; flex: 1 1 100%; }          /* статус усечён в общей строке шапки */
 }
 
 @media (max-width: 620px) {

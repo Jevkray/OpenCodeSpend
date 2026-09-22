@@ -8,8 +8,6 @@ public sealed class Db(string path)
 {
     private readonly string _path = path;
 
-    public string Path => _path;
-
     /// <summary>Владелец локальных (не привязанных к аккаунту) данных — машина-сборщик.</summary>
     public const string LocalUser = "local";
 

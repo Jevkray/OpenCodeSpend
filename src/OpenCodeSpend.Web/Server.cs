@@ -290,7 +290,7 @@ public static class Server
                     ".config", "opencode-spend", "ocspend-capture.json");
                 if (File.Exists(path)) File.Delete(path);
             }
-            catch { }
+            catch (Exception e) { app.Logger.LogDebug(e, "не удалось удалить файл сессии opencode"); }
             // не редиректим сразу: приложение должно увидеть этот адрес и очистить cookie opencode
             var lang = PickLang(ctx);
             var bye = lang == "ru" ? "Выхожу из аккаунта opencode…" : "Signing out of opencode…";
@@ -435,7 +435,7 @@ public static class Server
                     await Task.Delay(300, ct);
                 }
             }
-            catch { }
+            catch (Exception e) { app.Logger.LogDebug(e, "поток обновлений браузера закрыт"); }
         });
 
         app.MapPost("/api/control/stop-all", async (HttpContext ctx, OpencodeControl ctl, ControlState state, CancellationToken ct) =>

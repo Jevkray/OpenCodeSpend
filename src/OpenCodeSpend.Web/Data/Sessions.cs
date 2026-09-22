@@ -19,8 +19,6 @@ public sealed class SessionStore(Db db)
             cmd.Parameters.AddWithValue("@" + (i + 1), values[i] ?? DBNull.Value);
     }
 
-    private static string? Str(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetString(i);
-
     /// <summary>Создаёт сессию, возвращает токен (показывается один раз — кладём в cookie).</summary>
     public string Create(string userId, int days, string? ua, string? ip)
     {
@@ -82,22 +80,5 @@ public sealed class SessionStore(Db db)
         cmd.CommandText = "delete from session where user_id=@1";
         Bind(cmd, userId);
         cmd.ExecuteNonQuery();
-    }
-
-    /// <summary>Активные сессии пользователя (для показа в интерфейсе).</summary>
-    public List<(string Id, DateTimeOffset Created, DateTimeOffset LastSeen, string? Ua)> List(string userId)
-    {
-        var list = new List<(string, DateTimeOffset, DateTimeOffset, string?)>();
-        using var cn = _db.Open();
-        using var cmd = cn.CreateCommand();
-        cmd.CommandText = "select token_hash, created, last_seen, ua from session where user_id=@1 order by last_seen desc";
-        Bind(cmd, userId);
-        using var r = cmd.ExecuteReader();
-        while (r.Read())
-        {
-            var hash = r.GetString(0);
-            list.Add((hash[..8], Db.Parse(r.GetString(1)), Db.Parse(r.GetString(2)), Str(r, 3)));
-        }
-        return list;
     }
 }

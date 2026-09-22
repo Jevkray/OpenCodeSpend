@@ -16,10 +16,7 @@ public sealed record UsageRecord(
     long OutputTokens,
     long ReasoningTokens,
     long CacheRead,
-    long CacheWrite)
-{
-    public long TotalTokens => InputTokens + OutputTokens + ReasoningTokens + CacheRead + CacheWrite;
-}
+    long CacheWrite);
 
 public sealed record SessionRecord(
     string Id,
@@ -37,26 +34,12 @@ public sealed record SessionRecord(
     long ReasoningTokens,
     long CacheRead);
 
-public sealed record BudgetLine(string Name, string Period, decimal Limit, decimal Spent, double WarnAt)
-{
-    public double Ratio => Limit > 0 ? (double)(Spent / Limit) : 0;
-}
+public sealed record BudgetLine(string Name, string Period, decimal Limit, decimal Spent, double WarnAt);
 
 public sealed class ControlSessionsDto
 {
     public string? Device { get; set; }
     public List<object>? Sessions { get; set; }
-}
-
-public sealed class ControlAckDto
-{
-    public string? Id { get; set; }
-    public bool Ok { get; set; }
-}
-
-public sealed class CookieDto
-{
-    public string? Cookie { get; set; }
 }
 
 public sealed class ClaimDto
@@ -80,14 +63,6 @@ public sealed class ProfilePushDto
     public string? LiteSubId { get; set; }
 }
 
-public sealed class DeviceIngestDto
-{
-    public string? Device { get; set; }
-    public List<UsageRecord>? Usage { get; set; }
-    public List<SessionRecord>? Sessions { get; set; }
-}
-
-/// <summary>Единый пакет устройства: данные и снимок сессий одним запросом.</summary>
 public sealed class DeviceSyncDto
 {
     public string? Device { get; set; }
@@ -185,9 +160,6 @@ public sealed class SpendConfig
     public string? GitHubClientSecret { get; set; }
 
     public bool GitHubEnabled => !string.IsNullOrWhiteSpace(GitHubClientId) && !string.IsNullOrWhiteSpace(GitHubClientSecret);
-
-    /// <summary>Р•СЃС‚СЊ Р»Рё С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ СЃРїРѕСЃРѕР± РІС…РѕРґР° С‡РµСЂРµР· РІРЅРµС€РЅРёР№ Р°РєРєР°СѓРЅС‚.</summary>
-    public bool AnyLoginEnabled => GoogleEnabled || GitHubEnabled;
 
     // --- РјСѓР»СЊС‚РёСѓСЃС‚СЂРѕР№СЃС‚РІРѕ ---
     /// <summary>РўРѕРєРµРЅ СѓСЃС‚СЂРѕР№СЃС‚РІР° РґР»СЏ РїСЂРёС‘РјР° РґР°РЅРЅС‹С… РЅР° СЃРµСЂРІРµСЂРµ.</summary>

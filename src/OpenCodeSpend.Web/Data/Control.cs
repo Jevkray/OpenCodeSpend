@@ -33,7 +33,7 @@ public static class ProcessEnv
         {
             var pbi = new byte[48];
             if (NtQueryInformationProcess(h, 0, pbi, pbi.Length, out _) != 0) return null;
-            var peb = ReadPtr(h, (IntPtr)BitConverter.ToInt64(pbi, 8));
+            var peb = (IntPtr)BitConverter.ToInt64(pbi, 8);   // PebBaseAddress уже указатель — не разыменовываем повторно
             if (peb == IntPtr.Zero) return null;
             var parms = ReadPtr(h, IntPtr.Add(peb, 0x20));
             if (parms == IntPtr.Zero) return null;
@@ -130,12 +130,6 @@ public sealed class ControlState(Db db)
         var list = GetPending(uid);
         if (!list.Contains(id)) { list.Add(id); Set(uid, "pending", JsonSerializer.Serialize(list, Json)); }
     }
-
-    public void Ack(string uid, string id)
-    {
-        var list = GetPending(uid);
-        if (list.Remove(id)) Set(uid, "pending", JsonSerializer.Serialize(list, Json));
-    }
 }
 
 /// <summary>Управление локальным сервером opencode: статус сессий и остановка всех активных.</summary>
@@ -194,6 +188,13 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
         }
     }
 
+    /// <summary>Пароль процесса opencode по его PID; если у процесса не читается — общий поиск по всем процессам.</summary>
+    private static string? DiscoverPassword(int pid)
+    {
+        var v = ProcessEnv.Find(pid, "OPENCODE_SERVER_PASSWORD");
+        return !string.IsNullOrWhiteSpace(v) ? v : DiscoverPassword();
+    }
+
     /// <summary>Ищет OPENCODE_SERVER_PASSWORD в переменных окружения процессов opencode.</summary>
     private static string? DiscoverPassword()
     {
@@ -215,10 +216,13 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
         return null;
     }
 
-    /// <summary>Порты-кандидаты: слушающие сокеты процессов opencode (кроме нашего).</summary>
-    public List<int> DiscoverPorts()
+    /// <summary>Порт-кандидат вместе с PID процесса-владельца: у каждого opencode свой пароль.</summary>
+    private readonly record struct Candidate(int Port, int Pid);
+
+    /// <summary>Порты-кандидаты вместе с PID: слушающие сокеты процессов opencode (кроме нашего).</summary>
+    private List<Candidate> DiscoverCandidates()
     {
-        var ports = new List<int>();
+        var ports = new List<Candidate>();
         try
         {
             var pids = new HashSet<string>();
@@ -251,16 +255,21 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
 
             foreach (Match m in NetstatLine.Matches(output))
             {
-                if (!pids.Contains(m.Groups["pid"].Value)) continue;
+                var pidText = m.Groups["pid"].Value;
+                if (!pids.Contains(pidText)) continue;
                 var addr = m.Groups["addr"].Value;
                 if (addr is not ("127.0.0.1" or "0.0.0.0" or "[::1]" or "[::]")) continue;
                 var port = int.Parse(m.Groups["port"].Value, CultureInfo.InvariantCulture);
-                if (!ports.Contains(port)) ports.Add(port);
+                if (ports.All(c => c.Port != port))
+                    ports.Add(new Candidate(port, int.Parse(pidText, CultureInfo.InvariantCulture)));
             }
         }
         catch (Exception e) { log.LogDebug(e, "discover opencode ports failed"); }
         return ports;
     }
+
+    /// <summary>Только номера портов-кандидатов (обёртка над DiscoverCandidates).</summary>
+    public List<int> DiscoverPorts() => DiscoverCandidates().Select(c => c.Port).ToList();
 
     /// <summary>Находит рабочий адрес сервера opencode (проверяя кандидатов).</summary>
     private async Task<(string url, string? password)?> ResolveAsync(CancellationToken ct)
@@ -271,30 +280,44 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
         if (Port is not null && _verified)
             return ($"http://127.0.0.1:{Port}", Pw);
 
-        foreach (var port in DiscoverPorts())
+        // Пароль подбираем под конкретный порт: у каждого процесса opencode он свой.
+        foreach (var c in DiscoverCandidates())
         {
-            var url = $"http://127.0.0.1:{port}";
+            var url = $"http://127.0.0.1:{c.Port}";
+            var pw = DiscoverPassword(c.Pid);
             try
             {
-                using var http = Client(Pw);
+                using var http = Client(pw);
                 using var resp = await http.GetAsync(url + "/session/status", ct);
                 if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 {
-                    Port = port; _verified = true;
-                    ResetPassword();   // пароль устарел — искать заново при следующем обращении
-                    return (url, Pw);
+                    // порт рабочий, но пароль не подошёл: не сохраняем его, пусть вызывающий увидит 401 и перезапросит
+                    Port = c.Port; _verified = true;
+                    return (url, pw);
                 }
                 var text = (await resp.Content.ReadAsStringAsync(ct)).TrimStart();
                 if (text.StartsWith("{") || text.StartsWith("["))
                 {
-                    Port = port; _verified = true;
-                    return (url, Pw);
+                    Port = c.Port; _verified = true;
+                    SavePassword(pw);
+                    return (url, pw);
                 }
             }
             catch { }
         }
         LastError = "локальный сервер opencode не найден (порт не определён)";
         return null;
+    }
+
+    /// <summary>Запоминает подтверждённый пароль под замком, чтобы Pw не искал его заново.</summary>
+    private void SavePassword(string? password)
+    {
+        if (string.IsNullOrWhiteSpace(password)) return;
+        lock (_passwordLock)
+        {
+            _password = password;
+            _passwordTriedAt = DateTime.UtcNow;
+        }
     }
 
     private HttpClient Client(string? password)
@@ -341,7 +364,7 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
                 using var req = new HttpRequestMessage(HttpMethod.Get, r.Value.url + "/event");
                 req.Headers.TryAddWithoutValidation("Accept", "text/event-stream");
                 using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized) { ResetPassword(); await Task.Delay(3000); continue; }
+                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized) { ResetPassword(); Port = null; _verified = false; await Task.Delay(3000); continue; }
                 if (!resp.IsSuccessStatusCode) { await Task.Delay(3000); continue; }
                 using var stream = await resp.Content.ReadAsStreamAsync();
                 using var reader = new StreamReader(stream);
@@ -354,7 +377,7 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
                     if (json.Length > 0) Events.Apply(json);
                 }
             }
-            catch { Port = null; _verified = false; }   // соединение потеряно — порт могли сменить, ищем заново
+            catch { ResetPassword(); Port = null; _verified = false; }   // соединение потеряно — порт и пароль могли сменить, ищем заново
             await Task.Delay(2000);
         }
     }
@@ -372,6 +395,8 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
             if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
             {
                 LastError = "нужен OPENCODE_SERVER_PASSWORD (см. настройки)";
+                ResetPassword();
+                Port = null; _verified = false;   // пара «порт+пароль» устарела — пересобрать заново
                 return (false, 0, new());
             }
             if (!resp.IsSuccessStatusCode) { LastError = $"HTTP {(int)resp.StatusCode}"; return (false, 0, new()); }
@@ -427,41 +452,6 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
         catch (Exception e) { return (false, aborted, e.Message); }
     }
 
-    /// <summary>Диагностика: сырые ответы сервера opencode.</summary>
-    public async Task<Dictionary<string, object?>> DebugAsync(CancellationToken ct = default)
-    {
-        var res = new Dictionary<string, object?>
-        {
-            ["passwordFound"] = !string.IsNullOrWhiteSpace(Pw),
-            ["port"] = Port,
-            ["candidates"] = DiscoverPorts(),
-            ["error"] = LastError,
-        };
-        var r = await ResolveAsync(ct);
-        if (r is null) return res;
-        res["url"] = r.Value.url;
-        try
-        {
-            using var http = Client(Pw);
-            using var s = await http.GetAsync(r.Value.url + "/session/status", ct);
-            res["statusCode"] = (int)s.StatusCode;
-            var t = await s.Content.ReadAsStringAsync(ct);
-            res["status"] = t.Length > 3000 ? t[..3000] : t;
-            foreach (var path in new[] { "/api/session/active", "/experimental/workspace/status", "/session/status" })
-            {
-                using var sx = await http.GetAsync(r.Value.url + path, ct);
-                var tx = await sx.Content.ReadAsStringAsync(ct);
-                res["probe " + path] = (int)sx.StatusCode + " :: " + (tx.Length > 600 ? tx[..600] : tx);
-            }
-            using var s2 = await http.GetAsync(r.Value.url + "/session", ct);
-            res["sessionsCode"] = (int)s2.StatusCode;
-            var t2 = await s2.Content.ReadAsStringAsync(ct);
-            res["sessions"] = t2.Length > 3000 ? t2[..3000] : t2;
-        }
-        catch (Exception e) { res["error2"] = e.Message; }
-        return res;
-    }
-
     private sealed record Node(string Id, string Title, string? Agent, long Updated, string? ParentId, string Status, bool Active, string? Detail);
 
     private readonly Dictionary<string, long> _lastSeen = new();
@@ -475,11 +465,17 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
         if (r is null) return (false, new(), 0, new(), LastError ?? "сервер opencode не найден");
         try
         {
-            using var http = Client(Pw);
+            using var http = Client(r.Value.password);
             string? sessionsJson = null, statusJson = null;
             using (var resp = await http.GetAsync(r.Value.url + "/session", ct))
             {
-                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized) { LastError = "нужен OPENCODE_SERVER_PASSWORD"; return (false, new(), 0, new(), LastError); }
+                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    LastError = "нужен OPENCODE_SERVER_PASSWORD";
+                    ResetPassword();
+                    Port = null; _verified = false;   // пара «порт+пароль» устарела — пересобрать заново
+                    return (false, new(), 0, new(), LastError);
+                }
                 if (resp.IsSuccessStatusCode) sessionsJson = await resp.Content.ReadAsStringAsync(ct);
             }
             using (var resp = await http.GetAsync(r.Value.url + "/session/status", ct))
@@ -589,7 +585,7 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
         if (r is null) return (false, 0, LastError ?? "сервер opencode не найден");
         try
         {
-            using var http = Client(Pw);
+            using var http = Client(r.Value.password);
             var ids = new List<string> { sessionId };
             try
             {

@@ -24,16 +24,15 @@ public sealed class Pusher
     private readonly string _devicesPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenCodeSpend", "server-devices.json");
 
+    /// <summary>Файлы состояния читаются и пишутся из нескольких вызовов — сериализуем доступ.</summary>
+    private static readonly object FileLock = new();
+
     /// <summary>Сервер отверг токен — этот ПК отключён от аккаунта.</summary>
     public bool Revoked { get; private set; }
 
     public string? LastError { get; private set; }
-    public DateTimeOffset? LastPush { get; private set; }
     public int PushedUsage { get; private set; }
     public int PushedSite { get; private set; }
-    public int PushedStops { get; private set; }
-    public bool PushedProfile { get; private set; }
-    public string? LastControlMessage { get; private set; }
 
     /// <summary>Счётчик вызовов: профиль отправляем раз в 10, он тяжёлый.</summary>
     private int _profileTick;
@@ -51,17 +50,23 @@ public sealed class Pusher
     {
         try
         {
-            if (!File.Exists(_statePath)) return (0, 0, "");
-            using var doc = JsonDocument.Parse(File.ReadAllText(_statePath));
-            return (doc.RootElement.GetProperty("usageMs").GetInt64(),
-                    doc.RootElement.GetProperty("siteMs").GetInt64(),
-                    doc.RootElement.TryGetProperty("cookie", out var c) ? c.GetString() ?? "" : "");
+            lock (FileLock)
+            {
+                if (!File.Exists(_statePath)) return (0, 0, "");
+                using var doc = JsonDocument.Parse(File.ReadAllText(_statePath));
+                return (doc.RootElement.GetProperty("usageMs").GetInt64(),
+                        doc.RootElement.GetProperty("siteMs").GetInt64(),
+                        doc.RootElement.TryGetProperty("cookie", out var c) ? c.GetString() ?? "" : "");
+            }
         }
         catch { return (0, 0, ""); }
     }
 
     private void WriteState(long usageMs, long siteMs, string cookie)
-        => File.WriteAllText(_statePath, JsonSerializer.Serialize(new { usageMs, siteMs, cookie }));
+    {
+        lock (FileLock)
+            File.WriteAllText(_statePath, JsonSerializer.Serialize(new { usageMs, siteMs, cookie }));
+    }
 
     /// <summary>Один вызов: локальные данные + снимок сессий → сервер, команды «стоп» ← сервер.</summary>
     public async Task SyncAsync()
@@ -128,14 +133,14 @@ public sealed class Pusher
                 if (devDoc.RootElement.TryGetProperty("devices", out var devs))
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(_devicesPath)!);
-                    File.WriteAllText(_devicesPath,
-                        JsonSerializer.Serialize(new { self = _deviceId, devices = devs.Clone() }));
+                    lock (FileLock)
+                        File.WriteAllText(_devicesPath,
+                            JsonSerializer.Serialize(new { self = _deviceId, devices = devs.Clone() }));
                 }
             }
             catch { }
 
             // команды «стоп»: выполняем локально
-            var stopped = 0;
             try
             {
                 using var doc = JsonDocument.Parse(text);
@@ -148,12 +153,9 @@ public sealed class Pusher
                         using var stop = new HttpRequestMessage(HttpMethod.Post,
                             $"{_localUrl}/api/control/sessions/{Uri.EscapeDataString(id)}/stop");
                         using var stopResp = await _http.SendAsync(stop);
-                        if (stopResp.IsSuccessStatusCode) stopped++;
                     }
             }
             catch { }
-            PushedStops += stopped;
-            LastControlMessage = $"остановлено сессий: {stopped}";
 
             // watermarks — по максимальному времени отправленного
             if (usage.Count > 0)
@@ -164,8 +166,6 @@ public sealed class Pusher
 
             PushedUsage = usage.Count;
             PushedSite = site.Count;
-            PushedProfile = profile is not null;
-            LastPush = DateTimeOffset.Now;
             LastError = null;
         }
         catch (Exception e)

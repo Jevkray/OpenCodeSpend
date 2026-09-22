@@ -7,8 +7,6 @@ public sealed class ProfileStore(Db db)
 {
     private readonly Db _db = db;
 
-    public Task EnsureSchemaAsync(CancellationToken ct = default) { _db.EnsureSchema(); return Task.CompletedTask; }
-
     private static void Bind(SqliteCommand cmd, params object?[] values)
     {
         for (var i = 0; i < values.Length; i++)

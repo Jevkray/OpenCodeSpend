@@ -12,9 +12,11 @@ public sealed class Budgets(SpendConfig config)
         var f = _config.BudgetFiles.FirstOrDefault(p => Path.GetFileName(p).Contains("token-tracker"));
         if (f is null || !File.Exists(f)) return (0, 0, 0, 0.8);
         using var doc = JsonDocument.Parse(File.ReadAllText(f));
-        var b = doc.RootElement.GetProperty("budget");
-        decimal Get(string n, decimal dflt) => b.TryGetProperty(n, out var v) ? v.GetDecimal() : dflt;
-        var warn = b.TryGetProperty("warnAt", out var w) ? w.GetDouble() : 0.8;
+        if (doc.RootElement.ValueKind != JsonValueKind.Object
+            || !doc.RootElement.TryGetProperty("budget", out var b) || b.ValueKind != JsonValueKind.Object)
+            return (0, 0, 0, 0.8);
+        decimal Get(string n, decimal dflt) => b.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDecimal() : dflt;
+        var warn = b.TryGetProperty("warnAt", out var w) && w.ValueKind == JsonValueKind.Number ? w.GetDouble() : 0.8;
         return (Get("daily", 0), Get("weekly", 0), Get("monthly", 0), warn);
     }
 

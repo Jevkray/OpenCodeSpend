@@ -15,10 +15,7 @@ public sealed record SitePayment(string Id, DateTimeOffset? PaidAt, decimal Amou
 public sealed record SiteUsage(
     string Id, DateTimeOffset TimeCreated, string? Model, string? Provider, string? Plan,
     long InputTokens, long OutputTokens, long ReasoningTokens, long CacheRead,
-    decimal Cost, string? SessionId, string? KeyId)
-{
-    public long TotalTokens => InputTokens + OutputTokens + ReasoningTokens + CacheRead;
-}
+    decimal Cost, string? SessionId, string? KeyId);
 
 /// <summary>Тянет данные профиля через JSON API консоли opencode.ai по сессионной cookie.</summary>
 public sealed class ProfileClient

@@ -14,8 +14,6 @@ public sealed class SpendStore(Db db)
 {
     private readonly Db _db = db;
 
-    public Task EnsureSchemaAsync(CancellationToken ct = default) { _db.EnsureSchema(); return Task.CompletedTask; }
-
     private static void Bind(SqliteCommand cmd, params object?[] values)
     {
         for (var i = 0; i < values.Length; i++)
@@ -292,14 +290,6 @@ public sealed class SpendStore(Db db)
 
     // ---------- пользователи ----------
 
-    public Task<int> UserCountAsync(CancellationToken ct = default)
-    {
-        using var cn = _db.Open();
-        using var cmd = cn.CreateCommand();
-        cmd.CommandText = "select count(*) from app_user";
-        return Task.FromResult(Convert.ToInt32(cmd.ExecuteScalar()));
-    }
-
     /// <summary>Пользователь = аккаунт Google или GitHub (ключ — email). Повторный вход обновляет профиль.</summary>
     public Task<User> UpsertUserAsync(string email, string? name, string? picture, string? provider = null, CancellationToken ct = default)
     {
@@ -388,35 +378,6 @@ public sealed class SpendStore(Db db)
         return Task.FromResult(list);
     }
 
-    /// <summary>Переносит локальные данные на первого пользователя (миграция однопользовательской установки).</summary>
-    public Task AdoptLocalAsync(string uid, CancellationToken ct = default)
-    {
-        using var cn = _db.Open();
-        string[] sql =
-        {
-            "update or ignore usage_record set user_id=@u where user_id='local'",
-            "update or ignore session_meta set user_id=@u where user_id='local'",
-            "update or ignore site_usage set user_id=@u where user_id='local'",
-            "update or ignore site_payment set user_id=@u where user_id='local'",
-            "update or ignore site_profile set user_id=@u where user_id='local'",
-            "update or ignore sync_state set user_id=@u where user_id='local'",
-            "update or ignore control set user_id=@u where user_id='local'",
-            "update or ignore device set user_id=@u where user_id='local'",
-        };
-        foreach (var s in sql)
-        {
-            try
-            {
-                using var cmd = cn.CreateCommand();
-                cmd.CommandText = s;
-                cmd.Parameters.AddWithValue("@u", uid);
-                cmd.ExecuteNonQuery();
-            }
-            catch (SqliteException) { /* конфликт ключей — строки уже принадлежат пользователю */ }
-        }
-        return Task.CompletedTask;
-    }
-
     // ---------- устройства ----------
 
     public Task TouchDeviceAsync(string deviceId, string userId, string? name, CancellationToken ct = default)
@@ -430,18 +391,5 @@ public sealed class SpendStore(Db db)
         Bind(cmd, deviceId, userId, name);
         cmd.ExecuteNonQuery();
         return Task.CompletedTask;
-    }
-
-    public Task<List<Device>> DevicesAsync(string? uid = null, CancellationToken ct = default)
-    {
-        var list = new List<Device>();
-        using var cn = _db.Open();
-        using var cmd = cn.CreateCommand();
-        cmd.CommandText = "select id,user_id,name,created,last_seen from device where (@u is null or user_id=@u) order by last_seen desc";
-        Uid(cmd, uid);
-        using var r = cmd.ExecuteReader();
-        while (r.Read())
-            list.Add(new Device(r.GetString(0), r.GetString(1), Str(r, 2), Db.Parse(r.GetString(3)), Db.Parse(r.GetString(4))));
-        return Task.FromResult(list);
     }
 }

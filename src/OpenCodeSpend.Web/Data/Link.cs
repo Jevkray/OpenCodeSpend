@@ -20,6 +20,12 @@ public sealed class LinkStore(SpendConfig config)
 {
     private readonly string _path = config.LinkPath;
 
+    /// <summary>Файл привязки читается и пишется из разных вызовов — сериализуем доступ.</summary>
+    private readonly object _lock = new();
+
+    /// <summary>Файл идентификатора машины (статический) — отдельная блокировка.</summary>
+    private static readonly object MachineLock = new();
+
     /// <summary>Стабильный идентификатор этой машины: создаётся один раз и хранится на диске.</summary>
     public static string MachineId()
     {
@@ -27,15 +33,18 @@ public sealed class LinkStore(SpendConfig config)
             "OpenCodeSpend", "machine-id.txt");
         try
         {
-            if (File.Exists(path))
+            lock (MachineLock)
             {
-                var s = File.ReadAllText(path).Trim();
-                if (s.Length > 0) return s;
+                if (File.Exists(path))
+                {
+                    var s = File.ReadAllText(path).Trim();
+                    if (s.Length > 0) return s;
+                }
+                var id = Guid.NewGuid().ToString("N");
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, id);
+                return id;
             }
-            var id = Guid.NewGuid().ToString("N");
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, id);
-            return id;
         }
         catch { return Environment.MachineName; }
     }
@@ -44,9 +53,12 @@ public sealed class LinkStore(SpendConfig config)
     {
         try
         {
-            if (!File.Exists(_path)) return null;
-            var link = JsonSerializer.Deserialize<Link>(File.ReadAllText(_path));
-            return string.IsNullOrWhiteSpace(link?.ServerUrl) || string.IsNullOrWhiteSpace(link?.Token) ? null : link;
+            lock (_lock)
+            {
+                if (!File.Exists(_path)) return null;
+                var link = JsonSerializer.Deserialize<Link>(File.ReadAllText(_path));
+                return string.IsNullOrWhiteSpace(link?.ServerUrl) || string.IsNullOrWhiteSpace(link?.Token) ? null : link;
+            }
         }
         catch { return null; }
     }
@@ -55,11 +67,15 @@ public sealed class LinkStore(SpendConfig config)
     {
         var dir = Path.GetDirectoryName(_path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllText(_path, JsonSerializer.Serialize(link, new JsonSerializerOptions { WriteIndented = true }));
+        lock (_lock)
+            File.WriteAllText(_path, JsonSerializer.Serialize(link, new JsonSerializerOptions { WriteIndented = true }));
     }
 
     public void Clear()
     {
-        try { if (File.Exists(_path)) File.Delete(_path); } catch { }
+        lock (_lock)
+        {
+            try { if (File.Exists(_path)) File.Delete(_path); } catch { }
+        }
     }
 }

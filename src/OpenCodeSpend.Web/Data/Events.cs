@@ -15,7 +15,6 @@ public sealed class OpencodeEvents
     public event Action? Changed;
 
     public Live? Get(string sessionId) => _live.TryGetValue(sessionId, out var v) ? v : null;
-    public IReadOnlyDictionary<string, Live> All => _live;
     public void Forget(string sessionId) => _live.TryRemove(sessionId, out _);
 
     /// <summary>Разбирает строку события SSE и обновляет состояние.</summary>
