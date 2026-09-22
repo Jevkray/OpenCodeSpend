@@ -23,7 +23,6 @@ public partial class MainWindow : Window
         listener.Stop();
         return port;
     }
-    private const string Workspace = "wrk_01M23MJCERW1QBG80ZJ0VP1GK1";
     private const string OpenCodeHome = "https://opencode.ai";
 
 
@@ -348,7 +347,6 @@ public partial class MainWindow : Window
             await File.WriteAllTextAsync(CapturePath, JsonSerializer.Serialize(new
             {
                 savedAt = DateTimeOffset.Now,
-                workspace = Workspace,
                 cookie,
             }, new JsonSerializerOptions { WriteIndented = true }));
         }

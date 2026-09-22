@@ -168,7 +168,8 @@ public sealed class SpendConfig
 
     public string? ZenServiceKey { get; set; }
     public string ZenConsoleUrl { get; set; } = "https://console.opencode.ai";
-    public string ZenWorkspace { get; set; } = "wrk_01M23MJCERW1QBG80ZJ0VP1GK1";
+    /// <summary>Идентификатор рабочего пространства opencode. Пусто — определится автоматически.</summary>
+    public string ZenWorkspace { get; set; } = "";
     public string? ProfileCookie { get; set; }
 
     // --- Google OAuth (РІС…РѕРґ РІ РїСЂРёР»РѕР¶РµРЅРёРµ) ---

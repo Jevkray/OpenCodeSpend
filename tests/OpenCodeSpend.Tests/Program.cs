@@ -111,12 +111,12 @@ try
 
     // ---------- 3. пригласительные коды и устройства ----------
     Console.WriteLine("пригласительные коды и устройства");
-    const string srv = "https://agentstats.we4.online";
+    const string srv = "https://example.com";
     var devices = new DeviceService(db, new SpendConfig { DeviceToken = null });
 
     var round = InviteCode.Decode(InviteCode.Encode(srv, "SECRET12"));
     Check(round?.Url == srv && round?.Secret == "SECRET12", "адрес сервера восстанавливается из кода");
-    Check(!InviteCode.Encode(srv, "SECRET12").Contains("agentstats"), "адрес сервера не читается снаружи");
+    Check(!InviteCode.Encode(srv, "SECRET12").Contains("example"), "адрес сервера не читается снаружи");
     Check(InviteCode.Decode("OCSP1.неверныйкод") is null, "битый код отклоняется");
     Check(InviteCode.Decode("") is null, "пустой код отклоняется");
 

@@ -1,11 +1,11 @@
 # OpenCode Spend
 
+[![Repository](https://img.shields.io/badge/GitHub-OpenCodeSpend-181717?logo=github&logoColor=white)](https://github.com/JevKray/OpenCodeSpend)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![WPF](https://img.shields.io/badge/WPF-Windows-0078D4?logo=windows&logoColor=white)](https://learn.microsoft.com/dotnet/desktop/wpf/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-%D1%85%D1%80%D0%B0%D0%BD%D0%B8%D0%BB%D0%B8%D1%89%D0%B5-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![status](https://img.shields.io/badge/status-active-35c88a)](#)
-[![repository](https://img.shields.io/badge/repository-private-f2555a?logo=github&logoColor=white)](#)
 ![License](https://img.shields.io/badge/license-MIT-35c88a)
 
 Мониторинг расходов и активности opencode. Приложение на ПК собирает данные и
@@ -249,4 +249,14 @@ dotnet run --project tests/OpenCodeSpend.Tests
 
 ## 📄 Лицензия
 
-Проект распространяется по лицензии [MIT](LICENSE). Репозиторий сейчас приватный.
+Проект распространяется по лицензии [MIT](LICENSE). Репозиторий открыт.
+
+## 💬 Contacts & Support
+
+<div align="center">
+
+[![Telegram](https://img.shields.io/badge/Telegram-@eugenekray-2CA5E0?logo=telegram&logoColor=white)](https://t.me/eugenekray)
+[![Email](https://img.shields.io/badge/Email-krasovskyworks@gmail.com-EA4335?logo=gmail&logoColor=white)](mailto:krasovskyworks@gmail.com)
+[![Boosty](https://img.shields.io/badge/Support-Boosty-FF6A00?logo=boosty&logoColor=white)](https://boosty.to/jevkray)
+
+</div>
