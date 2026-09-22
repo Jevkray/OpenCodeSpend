@@ -11,6 +11,7 @@
       sessionsBtn: "Сессии", sessionsTitle: "Активные сессии: посмотреть и остановить",
       connectServer: "Подключить сервер", connectServerTitle: "Привязать этот компьютер к серверу по коду",
       connectedToServer: "Подключен к серверу",
+      stateServer: "подключён к серверу",
       connectionMgmt: "Управление соединением", connectionMgmtTitle: "Состояние соединения аккаунта с компьютером",
       profileTitle: "Профиль opencode — данные с их стороны",
       goLimits: "OpenCode Go — лимиты",
@@ -48,6 +49,7 @@
       mgmtUnavailable: "управление недоступно",
       nothingRunning: "Сейчас ничего не выполняется",
       sessOne: "сессия", sessMany: "сессий", active: "активных",
+      phaseWorking: "работает", phaseRetry: "повторяет", phaseDone: "завершена",
       noDataPeriod: "Нет данных за период", noDataShort: "Нет данных",
       pcOne: "шт.", pcMany: "шт.",
       dayOne: "день", dayMany: "дней",
@@ -100,6 +102,7 @@
       sessionsBtn: "Sessions", sessionsTitle: "Active sessions: view and stop",
       connectServer: "Connect server", connectServerTitle: "Link this computer to the server by code",
       connectedToServer: "Connected to server",
+      stateServer: "connected to server",
       connectionMgmt: "Connection", connectionMgmtTitle: "Account-to-computer connection state",
       profileTitle: "opencode profile — data from their side",
       goLimits: "OpenCode Go — limits",
@@ -137,6 +140,7 @@
       mgmtUnavailable: "management unavailable",
       nothingRunning: "Nothing running right now",
       sessOne: "session", sessMany: "sessions", active: "active",
+      phaseWorking: "working", phaseRetry: "retrying", phaseDone: "done",
       noDataPeriod: "No data for the period", noDataShort: "No data",
       pcOne: "pc", pcMany: "pcs",
       dayOne: "day", dayMany: "days",
@@ -184,6 +188,8 @@
   let LANG = (localStorage.getItem("ocspend_lang") || ((navigator.language || "ru").toLowerCase().indexOf("ru") === 0 ? "ru" : "en"));
   if (!I18N[LANG]) LANG = "ru";
   function t(k) { const d = I18N[LANG] || I18N.ru; return (d[k] !== undefined ? d[k] : (I18N.ru[k] !== undefined ? I18N.ru[k] : k)); }
+  const PHASE_KEYS = { working: "phaseWorking", retry: "phaseRetry", done: "phaseDone" };
+  function phaseLabel(p) { const k = PHASE_KEYS[p]; return k ? t(k) : (p || ""); }
   function plural(n, one, many) { return LANG === "ru" ? many : (n === 1 ? one : many); }
   function applyI18n(root) {
     (root || document).querySelectorAll("[data-i18n]").forEach(function (el) { el.textContent = t(el.getAttribute("data-i18n")); });
@@ -198,7 +204,7 @@
 
   const locale = () => (LANG === "ru" ? "ru-RU" : "en-US");
 
-  const state = { range: "30d", mode: "paid", charts: {}, timer: null, local: null, profile: null, expanded: new Set(), linked: false, serverUrl: "", pairTimer: null, account: "", devices: [], selfDeviceId: "" };
+  const state = { range: "30d", mode: "paid", charts: {}, timer: null, local: null, profile: null, expanded: new Set(), linked: false, online: false, lastSync: 0, serverUrl: "", pairTimer: null, account: "", devices: [], selfDeviceId: "" };
 
   const PALETTE = ["#4f8cff", "#35c88a", "#f5a524", "#a78bfa", "#f2555a", "#22d3ee",
                    "#f472b6", "#84cc16", "#fb923c", "#60a5fa", "#e879f9", "#14b8a6"];
@@ -247,12 +253,35 @@
     return r.json();
   }
 
-  // слева в шапке: зелёная точка + «онлайн» + текущее время
-  function setStatus(ok) {
-    const el = $("#status");
-    el.className = "status" + (ok ? "" : " err");
-    el.innerHTML = '<span class="dot"></span>' + (ok ? t("online") : t("offline")) +
-      '<span class="time">' + new Date().toLocaleTimeString(locale()) + "</span>";
+  // состояние синхронизации кормит индикатор на аватаре (текстовый статус в шапке убран)
+  // ponytail: порог «недавно» = 10 мин; вынести в конфиг, если интервал синка больше
+  const ONLINE_WINDOW_MS = 10 * 60 * 1000;
+  function setStatus(ok, lastSync) {
+    state.online = !!ok;
+    state.lastSync = ok ? (lastSync ? new Date(lastSync).getTime() : Date.now()) : 0;
+    updateAccountIndicator();
+  }
+
+  // сервер — высший приоритет, затем свежий онлайн, иначе офлайн
+  function accountMode() {
+    if (state.linked) return "server";
+    if (state.online && state.lastSync && Date.now() - state.lastSync < ONLINE_WINDOW_MS) return "online";
+    return "offline";
+  }
+
+  // цвет кольца и текст подсказки на аватаре
+  function updateAccountIndicator() {
+    const el = $("#userLabel");
+    if (!el) return;
+    const mode = accountMode();
+    el.classList.toggle("is-server", mode === "server");
+    el.classList.toggle("is-online", mode === "online");
+    el.classList.toggle("is-offline", mode === "offline");
+    const tip = $("#acctTip");
+    if (!tip) return;
+    if (mode === "server") tip.textContent = t("stateServer");
+    else if (mode === "online") tip.textContent = t("online") + " · " + ago(state.lastSync);
+    else tip.textContent = t("offline");
   }
 
   function showAlert(msg) {
@@ -339,7 +368,7 @@
         <span class="dot ${n.active ? "" : "idle"}"></span>
         <div class="meta">
           <div class="live-name" title="${esc(n.title || n.id)}">${esc(n.title || n.id)}</div>
-          <div class="live-sub">${esc(n.agent || "—")} · ${esc(n.phase || n.status || "")}${n.detail ? " · " + esc(n.detail) : ""}${n.updated ? " · " + esc(ago(new Date(n.updated))) : ""}</div>
+          <div class="live-sub">${esc(n.agent || "—")} · ${esc(phaseLabel(n.phase || n.status))}${n.detail ? " · " + esc(n.detail) : ""}${n.updated ? " · " + esc(ago(new Date(n.updated))) : ""}</div>
         </div>
       </div>`).join("");
     $("#liveHint").textContent = flat.length + " " + plural(flat.length, t("sessOne"), t("sessMany")) + " · " + t("active") + " " + flat.filter(x => x.active).length;
@@ -486,9 +515,11 @@
           ? `<img class="avatar" src="${esc(acc.picture)}" alt="" referrerpolicy="no-referrer">`
           : `<span class="avatar">${esc(initial)}</span>`;
         const codeLink = m.mode === "server" ? `<button type="button" class="linklike" id="accountOpen">${t("accountCodeLink")}</button>` : "";
-        el.innerHTML = pic + `<span class="name">${esc(label)}</span>` + codeLink + `<a href="${logout}">${t("logout")}</a>`;
+        // кольцо-индикатор состояния рисуется вокруг .avatar, подсказка — по наведению
+        el.innerHTML = `<span class="ava">${pic}</span><span class="name">${esc(label)}</span>` + codeLink + `<a href="${logout}">${t("logout")}</a>` + `<span class="acct-tip" id="acctTip"></span>`;
         const openBtn = $("#accountOpen");
         if (openBtn) openBtn.addEventListener("click", () => { $("#accountCodeBox").hidden = true; $("#accountDialog").showModal(); });
+        updateAccountIndicator();
       } else {
         el.innerHTML = "";
       }
@@ -499,7 +530,7 @@
     try {
       const d = await fetchJson("/api/summary?range=all");
       showAlert(d.syncError ? t("sync") + d.syncError : "");
-      setStatus(d.dbOk);
+      setStatus(d.dbOk, d.lastSync);
       $("#tzLabel").textContent = t("profileDataTz") + d.tz;
       $("#footLeft").textContent = t("footTotal") + d.range.label + ": " + usd(d.totals.cost) + " · " + compact(d.totals.tokens) + " " + t("tokens");
       $("#footRight").textContent = t("modelsCount") + d.byModel.length + " · " + t("sessionsInPeriod") + num(d.totals.sessions);
@@ -941,7 +972,7 @@
       ${arrow}
       <div class="meta">
         <div class="ttl" title="${esc(n.title || n.id)}">${esc(n.title || n.id)}</div>
-        <div class="sub"><span class="dot ${n.active ? "" : "idle"}"></span>${esc(n.agent || "—")} · ${esc(n.phase || n.status || "")}${n.detail ? " · " + esc(n.detail) : ""}${n.updated ? " · " + esc(ago(new Date(n.updated))) : ""}</div>
+        <div class="sub"><span class="dot ${n.active ? "" : "idle"}"></span>${esc(n.agent || "—")} · ${esc(phaseLabel(n.phase || n.status))}${n.detail ? " · " + esc(n.detail) : ""}${n.updated ? " · " + esc(ago(new Date(n.updated))) : ""}</div>
       </div>
       <button class="btn danger" data-stop="${esc(n.id)}" title="${t("stopTitle")}">${t("stopBtn")}</button>
     </div>`;

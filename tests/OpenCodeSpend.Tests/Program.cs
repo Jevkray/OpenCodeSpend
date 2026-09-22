@@ -146,19 +146,32 @@ try
     Check(state.GetPending("uB").Count == 0, "команда A не видна B");
     Check(state.GetSessionsRaw("uA").Contains("\"items\":[]"), "снимок B не виден A");
 
-    // ---------- 5. гистерезис активности сессий ----------
-    Console.WriteLine("SessionActivityGate");
-    var gate = new SessionActivityGate(5000);
-    Check(gate.Apply("s", true, 0), "gate: стартовое активно");
-    Check(gate.Apply("s", false, 1000), "gate: в пределах 5с не меняем");
-    Check(gate.Apply("s", false, 4000), "gate: всё ещё держим");
-    Check(!gate.Apply("s", false, 5001), "gate: после 5с применяем неактивно");
-    Check(!gate.Apply("s", true, 6000), "gate: обратно ждём 5с");
-    Check(gate.Apply("s", true, 11002), "gate: после 5с применяем активно");
-    gate.ForceInactive("s", 20000);
-    Check(!gate.Apply("s", true, 20001), "gate: после стопа считаем завершённой");
-    Check(!gate.Apply("s", true, 24000), "gate: держим 5с после стопа");
-    Check(gate.Apply("s", true, 25001), "gate: после стопа снова реальный статус");
+    // ---------- 5. определение активности сессий ----------
+    Console.WriteLine("активность сессий");
+    Check(OpencodeControl.IsActiveStatus("busy"), "busy считается активной");
+    Check(OpencodeControl.IsActiveStatus("retry"), "retry считается активной");
+    Check(!OpencodeControl.IsActiveStatus("idle"), "idle не активна");
+    Check(!OpencodeControl.IsActiveStatus(null), "нет статуса — не активна");
+    Check(OpencodeControl.PhaseFor("busy") == "working"
+        && OpencodeControl.PhaseFor("retry") == "retry"
+        && OpencodeControl.PhaseFor(null) == "done", "фазы по реальному статусу");
+
+    var eff = OpencodeControl.EffectiveActive(new[]
+    {
+        ("parent", (string?)null, false),
+        ("child", "parent", true),
+        ("other", (string?)null, false),
+    });
+    Check(eff["parent"], "родитель активен, если активен ребёнок");
+    Check(eff["child"], "активный ребёнок остаётся активным");
+    Check(!eff["other"], "неактивная сессия без детей неактивна");
+
+    var eff2 = OpencodeControl.EffectiveActive(new[]
+    {
+        ("p", (string?)null, false),
+        ("c", "p", false),
+    });
+    Check(!eff2["p"] && !eff2["c"], "все неактивные — родитель неактивен");
 
     // ---------- 6. повторный поиск пароля ----------
     Console.WriteLine("ShouldRetryPassword");

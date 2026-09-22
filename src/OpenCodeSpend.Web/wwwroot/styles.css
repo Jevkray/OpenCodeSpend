@@ -61,10 +61,14 @@ body {
 .menu-btn { display: none; }
 .controls .btn, .segmented button, .account { white-space: nowrap; flex: none; }
 
-.segmented { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
+/* единая высота всех элементов строки шапки */
+.controls .btn, .controls .segmented, .menu-btn, .account { height: 36px; }
+.controls .btn { padding: 0 14px; }
+
+.segmented { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
 .segmented button {
   appearance: none; border: 0; background: transparent; color: var(--muted);
-  padding: 6px 12px; border-radius: 999px; font: inherit; font-size: 13px; cursor: pointer;
+  padding: 0 12px; height: 28px; border-radius: 999px; font: inherit; font-size: 13px; cursor: pointer;
   transition: background .15s, color .15s;
 }
 .segmented button:hover { color: var(--text); }
@@ -81,10 +85,6 @@ body {
 .btn.danger:hover { background: #241318; border-color: #6b3040; }
 .btn.danger.on { background: #3a1620; border-color: var(--bad); color: #ffd9dc; }
 .btn.danger:disabled { opacity: .45; }
-
-.status { color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px rgba(53,200,138,.12); }
-.status.err .dot { background: var(--bad); box-shadow: 0 0 0 3px rgba(242,85,90,.14); }
 
 /* ---------- layout ---------- */
 main {
@@ -247,9 +247,24 @@ main {
 /* ---------- аккаунт в шапке ---------- */
 .account {
   display: inline-flex; align-items: center; gap: 8px; flex: none; margin-left: 10px;
+  position: relative;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 999px; padding: 3px 5px 3px 4px; max-width: 240px;
+  --ring: var(--faint); /* цвет кольца по состоянию */
 }
+.account .ava { position: relative; width: 24px; height: 24px; flex: none; display: grid; place-items: center; }
+/* плавно переливающееся кольцо вокруг аватара */
+.account .ava::before {
+  content: ""; position: absolute; inset: -2px; border-radius: 50%; padding: 2px;
+  background: conic-gradient(from 0deg, var(--ring), transparent 45%, var(--ring) 70%, transparent);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: ring-spin 3.5s linear infinite; pointer-events: none;
+}
+@keyframes ring-spin { to { transform: rotate(360deg); } }
+.account.is-server { --ring: var(--accent); }
+.account.is-online { --ring: var(--good); }
+.account.is-offline { --ring: var(--bad); }
 .account .avatar {
   width: 24px; height: 24px; flex: none; border-radius: 50%;
   background: linear-gradient(135deg, #2b3c60, #1a2338); border: 1px solid #2e3c56;
@@ -260,6 +275,19 @@ main {
 .account a:hover { background: var(--surface-2); color: var(--text); }
 .account a.solid { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 4px 10px; }
 .account a.solid:hover { border-color: var(--border-hover); color: var(--text); }
+/* подсказка при наведении: своя, не влияет на раскладку */
+.account .acct-tip {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 50;
+  white-space: nowrap; font-size: 12px; padding: 5px 9px; border-radius: 8px;
+  background: var(--surface-2); border: 1px solid var(--border-hover); color: var(--muted);
+  box-shadow: var(--shadow-hover); pointer-events: none;
+  opacity: 0; visibility: hidden; transform: translateY(-2px);
+  transition: opacity .15s, transform .15s, visibility .15s;
+}
+.account:hover .acct-tip { opacity: 1; visibility: visible; transform: translateY(0); }
+.account.is-server .acct-tip { color: var(--accent); }
+.account.is-online .acct-tip { color: var(--good); }
+.account.is-offline .acct-tip { color: var(--bad); }
 
 /* ---------- модалка активных сессий ---------- */
 dialog.stop-dialog {
@@ -304,7 +332,6 @@ dialog.stop-dialog::backdrop { background: rgba(4, 6, 10, .68); backdrop-filter:
 .stop-row .btn.danger { padding: 6px 12px; font-size: 12px; }
 
 /* ---------- подключение аккаунта opencode ---------- */
-.status .time { color: var(--faint); margin-left: 4px; }
 
 .connect-card { margin-bottom: 16px; border-color: #2f4370; }
 .connect-card textarea {
@@ -370,13 +397,12 @@ dialog.stop-dialog::backdrop { background: rgba(4, 6, 10, .68); backdrop-filter:
 
 @media (max-width: 1500px) {
   .brand-sub { display: none; }
-  .status { max-width: 240px; }
 }
 
 @media (max-width: 1200px) {
   .brand { order: 1; flex: 1 1 auto; min-width: 0; }
   .account { order: 2; margin-left: 0; flex: none; }
-  .menu-btn { order: 3; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 40px; padding: 0; flex: none; }
+  .menu-btn { order: 3; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 36px; padding: 0; flex: none; }
 
   /* кнопки шапки → выпадающее меню */
   .controls {
@@ -395,7 +421,6 @@ dialog.stop-dialog::backdrop { background: rgba(4, 6, 10, .68); backdrop-filter:
 @media (max-width: 768px) {
   .brand-sub { display: none; }
   .account .name { display: none; }              /* имя пользователя скрыто */
-  .status { order: 4; flex: 1 1 100%; }          /* статус усечён в общей строке шапки */
 }
 
 @media (max-width: 620px) {
@@ -470,7 +495,6 @@ dialog.settings h2 { margin: 0 0 14px; font-size: 16px; font-weight: 620; }
   .live-name { font-size: 12px; }
   .section-label { font-size: 11px; margin: 12px 2px 8px; }
   .brand-sub { display: none; }
-  .status { font-size: 11px; }
   .account .name { display: none; }
   .controls .btn { min-height: 42px; }
   .topbar { gap: 6px; }
@@ -516,4 +540,4 @@ dialog.settings h2 { margin: 0 0 14px; font-size: 16px; font-weight: 620; }
 .confirm-dialog{width:min(94vw,460px)}
 .stop-dialog .empty{color:#5f6880;font-size:13px;padding:10px 0}
 
-.btn.lang{min-width:44px;padding:8px 10px;font-size:12px;font-weight:600;letter-spacing:.5px}
+.btn.lang{min-width:44px;padding:0 10px;font-size:12px;font-weight:600;letter-spacing:.5px}

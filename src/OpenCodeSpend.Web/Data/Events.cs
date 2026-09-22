@@ -32,39 +32,38 @@ public sealed class OpencodeEvents
 
             switch (type)
             {
-                case "session.next.text.started":
-                case "session.next.text.delta":
-                    Set(sid, true, "печатает ответ", null); break;
-                case "session.next.text.ended":
-                    Set(sid, true, "ответ закончен", null); break;
-                case "session.next.reasoning.started":
-                    Set(sid, true, "размышляет", null); break;
-                case "session.next.reasoning.ended":
-                    Set(sid, true, "размышление закончено", null); break;
-                case "session.next.step.started":
-                    Set(sid, true, "работает", Str("agent")); break;
-                case "session.next.step.ended":
-                    Set(sid, true, "шаг завершён", null); break;
-                case "session.next.step.failed":
-                    Set(sid, true, "ошибка шага", null); break;
-                case "session.next.tool.called":
-                    Set(sid, true, "вызывает инструмент", Str("tool")); break;
-                case "session.next.tool.success":
-                    Set(sid, true, "инструмент выполнен", Str("tool")); break;
-                case "session.next.tool.failed":
-                    Set(sid, true, "инструмент не выполнился", Str("tool")); break;
-                case "session.next.shell.started":
-                    Set(sid, true, "выполняет команду", Short(Str("command"))); break;
-                case "session.next.shell.ended":
-                    Set(sid, true, "команда выполнена", null); break;
+                // реальный статус сессии из opencode: busy/retry/idle
+                case "session.status":
+                {
+                    var status = p.TryGetProperty("status", out var st) && st.ValueKind == JsonValueKind.Object && st.TryGetProperty("type", out var stt)
+                        ? stt.GetString() : null;
+                    if (string.Equals(status, "idle", StringComparison.OrdinalIgnoreCase)) Set(sid, false, "done", null);
+                    else Set(sid, true, string.Equals(status, "retry", StringComparison.OrdinalIgnoreCase) ? "retry" : "working", null);
+                    break;
+                }
                 case "session.idle":
-                    Set(sid, false, "простаивает", null); break;
+                    Set(sid, false, "done", null); break;
                 case "session.deleted":
                     Forget(sid); break;
+                // детали работы (что именно делает агент) — фаза при этом остаётся «работает»
+                case "session.next.text.started":
+                case "session.next.text.delta":
+                    Set(sid, true, "working", "печатает ответ"); break;
+                case "session.next.reasoning.started":
+                case "session.next.reasoning.delta":
+                    Set(sid, true, "working", "размышляет"); break;
+                case "session.next.step.started":
+                    Set(sid, true, "working", Str("agent")); break;
+                case "session.next.tool.called":
+                case "session.next.tool.progress":
+                    Set(sid, true, "working", Str("tool")); break;
+                case "session.next.tool.failed":
+                    Set(sid, true, "working", Str("tool")); break;
+                case "session.next.shell.started":
+                    Set(sid, true, "working", Short(Str("command"))); break;
                 default:
-                    // session.updated / created / message.* и прочее — только отметка «была активность»
-                    if (type.StartsWith("session.next.", StringComparison.Ordinal) || type == "session.active")
-                        Set(sid, true, "работает", null);
+                    if (type.StartsWith("session.next.", StringComparison.Ordinal))
+                        Set(sid, true, "working", null);
                     break;
             }
 

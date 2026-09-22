@@ -382,62 +382,130 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
         }
     }
 
-    /// <summary>Сколько сессий сейчас активно (не idle).</summary>
-    public async Task<(bool ok, int active, List<string> ids)> StatusAsync(CancellationToken ct = default)
-    {
-        var r = await ResolveAsync(ct);
-        if (r is null) { LastError = "локальный сервер opencode не найден"; CheckedAt = DateTimeOffset.UtcNow; return (false, 0, new()); }
-        try
-        {
-            using var http = Client(r.Value.password);
-            using var resp = await http.GetAsync(r.Value.url + "/session/status", ct);
-            CheckedAt = DateTimeOffset.UtcNow;
-            if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-            {
-                LastError = "нужен OPENCODE_SERVER_PASSWORD (см. настройки)";
-                ResetPassword();
-                Port = null; _verified = false;   // пара «порт+пароль» устарела — пересобрать заново
-                return (false, 0, new());
-            }
-            if (!resp.IsSuccessStatusCode) { LastError = $"HTTP {(int)resp.StatusCode}"; return (false, 0, new()); }
+    /// <summary>Активен ли статус сессии из opencode: всё, что не "idle" (например "busy" или "retry").</summary>
+    public static bool IsActiveStatus(string? type)
+        => !string.IsNullOrEmpty(type) && !string.Equals(type, "idle", StringComparison.OrdinalIgnoreCase);
 
-            var json = await resp.Content.ReadAsStringAsync(ct);
-            var ids = new List<string>();
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+    /// <summary>Код фазы по реальному статусу: busy → работа, retry → повтор, иначе завершена.</summary>
+    public static string PhaseFor(string? statusType) => statusType?.ToLowerInvariant() switch
+    {
+        "busy" => "working",
+        "retry" => "retry",
+        _ => "done",
+    };
+
+    /// <summary>Активность с учётом субагентов: сессия активна, если активна сама или любой её потомок.</summary>
+    public static Dictionary<string, bool> EffectiveActive(IEnumerable<(string Id, string? ParentId, bool Active)> nodes)
+    {
+        var own = new Dictionary<string, bool>();
+        var children = new Dictionary<string, List<string>>();
+        foreach (var n in nodes)
+        {
+            own[n.Id] = n.Active;
+            if (n.ParentId is not null)
             {
-                foreach (var prop in doc.RootElement.EnumerateObject())
-                {
-                    var v = prop.Value;
-                    var type = v.ValueKind == JsonValueKind.Object && v.TryGetProperty("type", out var t) ? t.GetString() : v.ToString();
-                    if (!string.Equals(type, "idle", StringComparison.OrdinalIgnoreCase)) ids.Add(prop.Name);
-                }
+                if (!children.TryGetValue(n.ParentId, out var list)) children[n.ParentId] = list = new List<string>();
+                list.Add(n.Id);
             }
-            LastError = null;
-            return (true, ids.Count, ids);
         }
-        catch (Exception e) { LastError = e.Message; CheckedAt = DateTimeOffset.UtcNow; return (false, 0, new()); }
+        var result = new Dictionary<string, bool>();
+        var visiting = new HashSet<string>();
+        bool Resolve(string id)
+        {
+            if (result.TryGetValue(id, out var known)) return known;
+            if (!visiting.Add(id)) return own.TryGetValue(id, out var o) && o;   // защита от цикла
+            var active = own.TryGetValue(id, out var a) && a;
+            if (children.TryGetValue(id, out var ch))
+                foreach (var c in ch)
+                    if (Resolve(c)) active = true;
+            visiting.Remove(id);
+            result[id] = active;
+            return active;
+        }
+        foreach (var n in nodes) Resolve(n.Id);
+        return result;
     }
 
-    /// <summary>Останавливает все активные сессии.</summary>
+    private sealed record Meta(string Id, string Title, string? Agent, long Updated, string? Parent, string? Directory);
+
+    /// <summary>Разбирает список сессий из GET /session (id, родитель, каталог, время).</summary>
+    private static List<Meta> ParseSessions(string? json)
+    {
+        var list = new List<Meta>();
+        if (json is null) return list;
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind != JsonValueKind.Array) return list;
+        foreach (var e in doc.RootElement.EnumerateArray())
+        {
+            var id = e.TryGetProperty("id", out var i) ? i.GetString() : null;
+            if (string.IsNullOrEmpty(id)) continue;
+            var title = e.TryGetProperty("title", out var t) ? t.GetString() : null;
+            var agent = e.TryGetProperty("agent", out var a) ? a.GetString() : null;
+            var parent = e.TryGetProperty("parentID", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+            var dir = e.TryGetProperty("directory", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString() : null;
+            long updated = 0;
+            if (e.TryGetProperty("time", out var tm) && tm.ValueKind == JsonValueKind.Object && tm.TryGetProperty("updated", out var u)
+                && u.ValueKind == JsonValueKind.Number) updated = u.GetInt64();
+            list.Add(new Meta(id, string.IsNullOrWhiteSpace(title) ? "сессия ····" + id[^Math.Min(4, id.Length)..] : title!, agent, updated, parent, dir));
+        }
+        return list;
+    }
+
+    /// <summary>Статусы сессий по каталогам: /session/status без directory видит только каталог сервера,
+    /// поэтому спрашиваем отдельно для каждого каталога из списка сессий.</summary>
+    private static async Task<Dictionary<string, string>> FetchStatusesAsync(HttpClient http, string url, IEnumerable<string?> dirs, CancellationToken ct)
+    {
+        var result = new Dictionary<string, string>();
+        var unique = dirs.Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d!).Distinct().ToList();
+        if (dirs.Any(string.IsNullOrWhiteSpace)) unique.Add("");   // сессии без каталога — общий запрос
+        foreach (var dir in unique)
+        {
+            try
+            {
+                var q = url + "/session/status" + (dir.Length > 0 ? "?directory=" + Uri.EscapeDataString(dir) : "");
+                using var resp = await http.GetAsync(q, ct);
+                if (!resp.IsSuccessStatusCode) continue;
+                using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+                if (doc.RootElement.ValueKind != JsonValueKind.Object) continue;
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                {
+                    var type = prop.Value.ValueKind == JsonValueKind.Object && prop.Value.TryGetProperty("type", out var t) ? t.GetString() : null;
+                    if (type is not null) result[prop.Name] = type;
+                }
+            }
+            catch { }
+        }
+        return result;
+    }
+
+    /// <summary>Останавливает все активные сессии (включая субагентов активных родителей).</summary>
     public async Task<(bool ok, int aborted, string? error)> StopAllAsync(CancellationToken ct = default)
     {
-        var (ok, _, ids) = await StatusAsync(ct);
-        if (!ok)
-        {
-            // даже если статус не отдался — пробуем взять список и прервать все
-            var all = await ListSessionsAsync(ct);
-            ids = all;
-        }
-        if (ids.Count == 0) return (true, 0, null);
-
         var r = await ResolveAsync(ct);
         if (r is null) return (false, 0, "сервер opencode не найден");
-
-        var aborted = 0;
         try
         {
             using var http = Client(r.Value.password);
+            string? sessionsJson = null;
+            using (var resp = await http.GetAsync(r.Value.url + "/session", ct))
+            {
+                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    LastError = "нужен OPENCODE_SERVER_PASSWORD";
+                    ResetPassword();
+                    Port = null; _verified = false;
+                    return (false, 0, LastError);
+                }
+                if (resp.IsSuccessStatusCode) sessionsJson = await resp.Content.ReadAsStringAsync(ct);
+            }
+
+            var meta = ParseSessions(sessionsJson);
+            var statuses = await FetchStatusesAsync(http, r.Value.url, meta.Select(m => m.Directory), ct);
+            var effective = EffectiveActive(meta.Select(m => (m.Id, m.Parent, IsActiveStatus(statuses.GetValueOrDefault(m.Id)))));
+            var ids = effective.Where(kv => kv.Value).Select(kv => kv.Key).ToList();
+            if (ids.Count == 0) return (true, 0, null);
+
+            var aborted = 0;
             foreach (var id in ids)
             {
                 try
@@ -449,15 +517,13 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
             }
             return (true, aborted, null);
         }
-        catch (Exception e) { return (false, aborted, e.Message); }
+        catch (Exception e) { return (false, 0, e.Message); }
     }
 
     private sealed record Node(string Id, string Title, string? Agent, long Updated, string? ParentId, string Status, bool Active, string? Detail);
 
-    private readonly Dictionary<string, long> _lastSeen = new();
-    private readonly SessionActivityGate _activity = new(5000);
-
-    /// <summary>Дерево сессий (родитель → субагенты) со статусом активности.</summary>
+    /// <summary>Дерево сессий (родитель → субагенты) со статусом активности.
+    /// Активность берётся из реального /session/status (по каталогу сессии); если активен субагент — родитель тоже активен.</summary>
     public async Task<(bool ok, List<object> tree, int active, List<object> recent, string? error)> SessionsAsync(CancellationToken ct = default)
     {
         StartWatch();
@@ -466,7 +532,7 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
         try
         {
             using var http = Client(r.Value.password);
-            string? sessionsJson = null, statusJson = null;
+            string? sessionsJson = null;
             using (var resp = await http.GetAsync(r.Value.url + "/session", ct))
             {
                 if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
@@ -478,64 +544,25 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
                 }
                 if (resp.IsSuccessStatusCode) sessionsJson = await resp.Content.ReadAsStringAsync(ct);
             }
-            using (var resp = await http.GetAsync(r.Value.url + "/session/status", ct))
-            {
-                if (resp.IsSuccessStatusCode) statusJson = await resp.Content.ReadAsStringAsync(ct);
-            }
 
-            var meta = new List<(string id, string title, string? agent, long updated, string? parent)>();
-            if (sessionsJson is not null)
-            {
-                using var doc = JsonDocument.Parse(sessionsJson);
-                if (doc.RootElement.ValueKind == JsonValueKind.Array)
-                    foreach (var e in doc.RootElement.EnumerateArray())
-                    {
-                        var id = e.TryGetProperty("id", out var i) ? i.GetString() : null;
-                        if (string.IsNullOrEmpty(id)) continue;
-                        var title = e.TryGetProperty("title", out var t) ? t.GetString() : null;
-                        var agent = e.TryGetProperty("agent", out var a) ? a.GetString() : null;
-                        var parent = e.TryGetProperty("parentID", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
-                        long updated = 0;
-                        if (e.TryGetProperty("time", out var tm) && tm.ValueKind == JsonValueKind.Object && tm.TryGetProperty("updated", out var u)
-                            && u.ValueKind == JsonValueKind.Number) updated = u.GetInt64();
-                        meta.Add((id, string.IsNullOrWhiteSpace(title) ? "сессия ····" + id[^Math.Min(4, id.Length)..] : title!, agent, updated, parent));
-                    }
-            }
+            var meta = ParseSessions(sessionsJson);
+            var statuses = await FetchStatusesAsync(http, r.Value.url, meta.Select(m => m.Directory), ct);
 
-            var statuses = new Dictionary<string, string>();
-            if (statusJson is not null)
-            {
-                using var doc = JsonDocument.Parse(statusJson);
-                if (doc.RootElement.ValueKind == JsonValueKind.Object)
-                    foreach (var prop in doc.RootElement.EnumerateObject())
-                    {
-                        var v = prop.Value;
-                        var type = v.ValueKind == JsonValueKind.Object && v.TryGetProperty("type", out var t) ? t.GetString() : v.ToString();
-                        statuses[prop.Name] = type ?? "unknown";
-                    }
-            }
-
-            // Живое состояние из SSE-потока, если оно есть; иначе запасная эвристика:
-            //  • пришёл не-idle статус, либо
-            //  • сессия обновилась с прошлой проверки (идёт работа), либо
-            //  • обновлялась последние 3 секунды.
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var nodes = new List<Node>();
+            var raw = new List<Node>();
             foreach (var m in meta)
             {
-                var live = Events.Get(m.id);
-                var idle = statuses.TryGetValue(m.id, out var s) && string.Equals(s, "idle", StringComparison.OrdinalIgnoreCase);
-                var changed = _lastSeen.TryGetValue(m.id, out var prev) ? prev != m.updated : false;
-                var fresh = m.updated > 0 && now - m.updated < 3000;
-                var rawActive = live?.Active ?? (!idle && (changed || fresh));
-                var active = _activity.Apply(m.id, rawActive, now);
-                string phase;
-                if (active && live is not null && !live.Active) phase = "завершается…";   // держим активной по гистерезису
-                else if (active) phase = live?.Phase ?? "работает";
-                else phase = "завершена";
-                nodes.Add(new Node(m.id, m.title, m.agent, m.updated, m.parent, phase, active, live?.Detail));
+                statuses.TryGetValue(m.Id, out var statusType);
+                raw.Add(new Node(m.Id, m.Title, m.Agent, m.Updated, m.Parent, PhaseFor(statusType), IsActiveStatus(statusType), null));
             }
-            foreach (var m in meta) _lastSeen[m.id] = m.updated;
+
+            // если активен потомок — родитель тоже активен
+            var effective = EffectiveActive(raw.Select(n => (n.Id, n.ParentId, n.Active)));
+            var nodes = raw.Select(n =>
+            {
+                var active = effective[n.Id];
+                var phase = active ? (n.Active ? n.Status : PhaseFor("busy")) : PhaseFor(null);
+                return n with { Active = active, Status = phase, Detail = Events.Get(n.Id)?.Detail };
+            }).ToList();
 
             var byId = nodes.ToDictionary(n => n.Id);
             var childrenOf = nodes.Where(n => n.ParentId is not null && byId.ContainsKey(n.ParentId))
@@ -556,16 +583,15 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
             };
 
             // корни: активные + недавно завершённые (последние 5 минут), но не больше 30
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var recentWindow = now - 5 * 60 * 1000;
             var roots = nodes
                 .Where(n => n.ParentId is null || !byId.ContainsKey(n.ParentId))
-                .Where(n => SubtreeActive(n) || n.Updated >= recentWindow)
+                .Where(n => n.Active || n.Updated >= recentWindow)
                 .OrderByDescending(n => n.Updated)
                 .Take(30)
                 .Select(Shape)
                 .ToList();
-
-            bool SubtreeActive(Node n) => n.Active || (childrenOf.TryGetValue(n.Id, out var ch2) && ch2.Any(SubtreeActive));
 
             var activeCount = nodes.Count(n => n.Active);
             var recent = nodes.OrderByDescending(n => n.Updated).Take(15)
@@ -625,32 +651,8 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
                 }
                 catch { }
             }
-            if (stopped > 0)
-            {
-                var gateNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                foreach (var id in ids) _activity.ForceInactive(id, gateNow);
-            }
             return stopped > 0 ? (true, stopped, null) : (false, 0, "не удалось прервать");
         }
         catch (Exception e) { return (false, 0, e.Message); }
-    }
-
-    private async Task<List<string>> ListSessionsAsync(CancellationToken ct)
-    {
-        var r = await ResolveAsync(ct);
-        if (r is null) return new();
-        try
-        {
-            using var http = Client(r.Value.password);
-            using var resp = await http.GetAsync(r.Value.url + "/session", ct);
-            if (!resp.IsSuccessStatusCode) return new();
-            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
-            var ids = new List<string>();
-            if (doc.RootElement.ValueKind == JsonValueKind.Array)
-                foreach (var e in doc.RootElement.EnumerateArray())
-                    if (e.TryGetProperty("id", out var id)) ids.Add(id.GetString() ?? "");
-            return ids.Where(x => x.Length > 0).ToList();
-        }
-        catch { return new(); }
     }
 }
