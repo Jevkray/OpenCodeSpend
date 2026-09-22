@@ -43,10 +43,15 @@ public static class Server
         var app = builder.Build();
 
         // за reverse-proxy (Caddy/nginx) видим настоящую схему и хост — нужно для ссылок в приглашении
-        app.UseForwardedHeaders(new ForwardedHeadersOptions
+        // приложение доступно только через наши прокси (Nginx Proxy Manager → nginx → контейнер),
+        // поэтому доверяем заголовкам X-Forwarded-* от любого источника
+        var fwd = new ForwardedHeadersOptions
         {
             ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
-        });
+        };
+        fwd.KnownIPNetworks.Clear();
+        fwd.KnownProxies.Clear();
+        app.UseForwardedHeaders(fwd);
 
         var store = app.Services.GetRequiredService<SpendStore>();
         try
