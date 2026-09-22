@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -142,12 +143,20 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
     public string? LastError { get; private set; }
     public int? Port { get; private set; }
     public DateTimeOffset? CheckedAt { get; private set; }
-    private bool _verified;
 
     private string? _password;
     private DateTime _passwordTriedAt = DateTime.MinValue;
     private readonly object _passwordLock = new();
     private static readonly TimeSpan PasswordRetryEvery = TimeSpan.FromSeconds(5);
+
+    // Кэш всех рабочих backend-ов: перебор процессов дорогой, панель опрашивает раз в секунду.
+    private readonly object _backendsLock = new();
+    private List<(string url, string? password)>? _backends;
+    private DateTime _backendsAt = DateTime.MinValue;
+    private static readonly TimeSpan BackendsTtl = TimeSpan.FromSeconds(5);
+
+    // Какому backend-у принадлежит сессия — чтобы «стоп» ушёл именно туда.
+    private readonly ConcurrentDictionary<string, (string url, string? password)> _sessionBackend = new();
 
     /// <summary>Пора ли повторить поиск пароля: он ещё не найден и с прошлой попытки прошло достаточно времени.</summary>
     public static bool ShouldRetryPassword(string? found, DateTime lastTryUtc, DateTime nowUtc, TimeSpan every)
@@ -271,15 +280,22 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
     /// <summary>Только номера портов-кандидатов (обёртка над DiscoverCandidates).</summary>
     public List<int> DiscoverPorts() => DiscoverCandidates().Select(c => c.Port).ToList();
 
-    /// <summary>Находит рабочий адрес сервера opencode (проверяя кандидатов).</summary>
-    private async Task<(string url, string? password)?> ResolveAsync(CancellationToken ct)
+    /// <summary>Находит ВСЕ рабочие серверы opencode: каждый слушающий порт процессов opencode проверяется
+    /// тем же запросом /session/status (401 тоже считается рабочим). Если задан config.OpencodeServerUrl —
+    /// используется только он. Результат кэшируется, чтобы не сканировать процессы на каждый запрос.</summary>
+    public async Task<List<(string url, string? password)>> ResolveAllAsync(CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(config.OpencodeServerUrl))
-            return (config.OpencodeServerUrl!.TrimEnd('/'), Pw);
+            return new List<(string url, string? password)> { (config.OpencodeServerUrl!.TrimEnd('/'), Pw) };
 
-        if (Port is not null && _verified)
-            return ($"http://127.0.0.1:{Port}", Pw);
+        lock (_backendsLock)
+        {
+            if (_backends is not null && DateTime.UtcNow - _backendsAt < BackendsTtl)
+                return _backends;
+        }
 
+        var list = new List<(string url, string? password)>();
+        int? firstPort = null;
         // Пароль подбираем под конкретный порт: у каждого процесса opencode он свой.
         foreach (var c in DiscoverCandidates())
         {
@@ -289,36 +305,66 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
             {
                 using var http = Client(pw);
                 using var resp = await http.GetAsync(url + "/session/status", ct);
-                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                var alive = resp.StatusCode == System.Net.HttpStatusCode.Unauthorized;
+                if (!alive)
                 {
-                    // порт рабочий, но пароль не подошёл: не сохраняем его, пусть вызывающий увидит 401 и перезапросит
-                    Port = c.Port; _verified = true;
-                    return (url, pw);
+                    var text = (await resp.Content.ReadAsStringAsync(ct)).TrimStart();
+                    alive = resp.IsSuccessStatusCode && (text.StartsWith("{") || text.StartsWith("["));
                 }
-                var text = (await resp.Content.ReadAsStringAsync(ct)).TrimStart();
-                if (text.StartsWith("{") || text.StartsWith("["))
+                if (alive)
                 {
-                    Port = c.Port; _verified = true;
-                    SavePassword(pw);
-                    return (url, pw);
+                    list.Add((url, pw));
+                    firstPort ??= c.Port;
                 }
             }
             catch { }
         }
-        LastError = "локальный сервер opencode не найден (порт не определён)";
+
+        lock (_backendsLock)
+        {
+            _backends = list;
+            _backendsAt = DateTime.UtcNow;
+            Port = firstPort;
+            CheckedAt = DateTimeOffset.UtcNow;
+        }
+        LastError = list.Count == 0 ? "локальный сервер opencode не найден (порт не определён)" : null;
+        return list;
+    }
+
+    /// <summary>Сбрасывает кэш backend-ов, но не чаще раза в TTL: панель опрашивает раз в секунду,
+    /// поэтому при сбое не сканируем процессы на каждый запрос.</summary>
+    private void InvalidateBackends()
+    {
+        lock (_backendsLock)
+        {
+            if (_backends is not null && DateTime.UtcNow - _backendsAt < BackendsTtl) return;
+            _backends = null;
+        }
+    }
+
+    /// <summary>Backend, которому принадлежит сессия: сначала из запомненной карты, иначе поиск по списку.</summary>
+    private async Task<(string url, string? password)?> BackendOfAsync(
+        string sessionId, List<(string url, string? password)> backends, CancellationToken ct)
+    {
+        if (_sessionBackend.TryGetValue(sessionId, out var known))
+            foreach (var b in backends)
+                if (b.url == known.url) return b;
+
+        foreach (var b in backends)
+        {
+            try
+            {
+                using var http = Client(b.password);
+                using var resp = await http.GetAsync(b.url + "/session", ct);
+                if (!resp.IsSuccessStatusCode) continue;
+                var meta = ParseSessions(await resp.Content.ReadAsStringAsync(ct));
+                if (meta.Any(m => m.Id == sessionId)) return b;
+            }
+            catch { }
+        }
         return null;
     }
 
-    /// <summary>Запоминает подтверждённый пароль под замком, чтобы Pw не искал его заново.</summary>
-    private void SavePassword(string? password)
-    {
-        if (string.IsNullOrWhiteSpace(password)) return;
-        lock (_passwordLock)
-        {
-            _password = password;
-            _passwordTriedAt = DateTime.UtcNow;
-        }
-    }
 
     private HttpClient Client(string? password)
     {
@@ -333,53 +379,60 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
     }
 
     public OpencodeEvents Events { get; } = new();
-    private Task? _watch;
-    private readonly object _watchLock = new();
 
-    /// <summary>Один раз запускает чтение потока событий opencode.</summary>
-    public void StartWatch()
-    {
-        lock (_watchLock)
-        {
-            if (_watch is not null) return;
-            _watch = Task.Run(() => WatchLoopAsync());
-        }
-    }
+    // По одному потоку наблюдения на backend; ключ — адрес.
+    private readonly ConcurrentDictionary<string, byte> _watched = new();
 
-    private async Task WatchLoopAsync()
+    /// <summary>Запускает чтение потока событий (SSE) для каждого рабочего backend-а.
+    /// Вызывается на каждый опрос, но поток создаётся только для новых адресов.</summary>
+    public void StartWatch() => _ = Task.Run(async () =>
     {
-        while (true)
+        try
         {
-            try
+            foreach (var b in await ResolveAllAsync(CancellationToken.None))
             {
-                var r = await ResolveAsync(CancellationToken.None);
-                if (r is null) { await Task.Delay(3000); continue; }
-                using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-                if (!string.IsNullOrWhiteSpace(r.Value.password))
+                if (!_watched.TryAdd(b.url, 0)) continue;
+                var (url, password) = b;
+                _ = Task.Run(async () =>
                 {
-                    var user = string.IsNullOrWhiteSpace(config.OpencodeServerUsername) ? "opencode" : config.OpencodeServerUsername!;
-                    var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{r.Value.password}"));
-                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
-                }
-                using var req = new HttpRequestMessage(HttpMethod.Get, r.Value.url + "/event");
-                req.Headers.TryAddWithoutValidation("Accept", "text/event-stream");
-                using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized) { ResetPassword(); Port = null; _verified = false; await Task.Delay(3000); continue; }
-                if (!resp.IsSuccessStatusCode) { await Task.Delay(3000); continue; }
-                using var stream = await resp.Content.ReadAsStreamAsync();
-                using var reader = new StreamReader(stream);
-                while (true)
-                {
-                    var line = await reader.ReadLineAsync();
-                    if (line is null) break;                      // поток закрылся — переподключаемся
-                    if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
-                    var json = line[5..].Trim();
-                    if (json.Length > 0) Events.Apply(json);
-                }
+                    try { await WatchBackendAsync(url, password); }
+                    finally { _watched.TryRemove(url, out _); }
+                });
             }
-            catch { ResetPassword(); Port = null; _verified = false; }   // соединение потеряно — порт и пароль могли сменить, ищем заново
-            await Task.Delay(2000);
         }
+        catch { }
+    });
+
+    /// <summary>Читает SSE-поток одного backend-а. Когда backend исчезает — поток завершается,
+    /// повторный запуск произойдёт при следующем StartWatch, если сервер вернётся.</summary>
+    private async Task WatchBackendAsync(string url, string? password)
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            if (!string.IsNullOrWhiteSpace(password))
+            {
+                var user = string.IsNullOrWhiteSpace(config.OpencodeServerUsername) ? "opencode" : config.OpencodeServerUsername!;
+                var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}"));
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
+            }
+            using var req = new HttpRequestMessage(HttpMethod.Get, url + "/event");
+            req.Headers.TryAddWithoutValidation("Accept", "text/event-stream");
+            using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+            if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized) { ResetPassword(); InvalidateBackends(); return; }
+            if (!resp.IsSuccessStatusCode) { InvalidateBackends(); return; }
+            using var stream = await resp.Content.ReadAsStreamAsync();
+            using var reader = new StreamReader(stream);
+            while (true)
+            {
+                var line = await reader.ReadLineAsync();
+                if (line is null) return;                     // поток закрылся — завершаем, перезапустит StartWatch
+                if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
+                var json = line[5..].Trim();
+                if (json.Length > 0) Events.Apply(json);
+            }
+        }
+        catch { InvalidateBackends(); }
     }
 
     /// <summary>Активен ли статус сессии из opencode: всё, что не "idle" (например "busy" или "retry").</summary>
@@ -478,46 +531,43 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
         return result;
     }
 
-    /// <summary>Останавливает все активные сессии (включая субагентов активных родителей).</summary>
+    /// <summary>Останавливает все активные сессии (включая субагентов активных родителей) на всех backend-ах.</summary>
     public async Task<(bool ok, int aborted, string? error)> StopAllAsync(CancellationToken ct = default)
     {
-        var r = await ResolveAsync(ct);
-        if (r is null) return (false, 0, "сервер opencode не найден");
-        try
+        var backends = await ResolveAllAsync(ct);
+        if (backends.Count == 0) return (false, 0, "сервер opencode не найден");
+        var aborted = 0;
+        var any = false;
+        foreach (var b in backends)
         {
-            using var http = Client(r.Value.password);
-            string? sessionsJson = null;
-            using (var resp = await http.GetAsync(r.Value.url + "/session", ct))
+            try
             {
-                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                using var http = Client(b.password);
+                string? sessionsJson = null;
+                using (var resp = await http.GetAsync(b.url + "/session", ct))
                 {
-                    LastError = "нужен OPENCODE_SERVER_PASSWORD";
-                    ResetPassword();
-                    Port = null; _verified = false;
-                    return (false, 0, LastError);
+                    if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized) { ResetPassword(); InvalidateBackends(); continue; }
+                    if (!resp.IsSuccessStatusCode) { InvalidateBackends(); continue; }
+                    sessionsJson = await resp.Content.ReadAsStringAsync(ct);
                 }
-                if (resp.IsSuccessStatusCode) sessionsJson = await resp.Content.ReadAsStringAsync(ct);
-            }
+                any = true;
 
-            var meta = ParseSessions(sessionsJson);
-            var statuses = await FetchStatusesAsync(http, r.Value.url, meta.Select(m => m.Directory), ct);
-            var effective = EffectiveActive(meta.Select(m => (m.Id, m.Parent, IsActiveStatus(statuses.GetValueOrDefault(m.Id)))));
-            var ids = effective.Where(kv => kv.Value).Select(kv => kv.Key).ToList();
-            if (ids.Count == 0) return (true, 0, null);
-
-            var aborted = 0;
-            foreach (var id in ids)
-            {
-                try
+                var meta = ParseSessions(sessionsJson);
+                var statuses = await FetchStatusesAsync(http, b.url, meta.Select(m => m.Directory), ct);
+                var effective = EffectiveActive(meta.Select(m => (m.Id, m.Parent, IsActiveStatus(statuses.GetValueOrDefault(m.Id)))));
+                foreach (var id in effective.Where(kv => kv.Value).Select(kv => kv.Key))
                 {
-                    using var resp = await http.PostAsync($"{r.Value.url}/session/{id}/abort", null, ct);
-                    if (resp.IsSuccessStatusCode) aborted++;
+                    try
+                    {
+                        using var resp = await http.PostAsync($"{b.url}/session/{id}/abort", null, ct);
+                        if (resp.IsSuccessStatusCode) aborted++;
+                    }
+                    catch { }
                 }
-                catch { }
             }
-            return (true, aborted, null);
+            catch { InvalidateBackends(); }
         }
-        catch (Exception e) { return (false, 0, e.Message); }
+        return (any, aborted, any ? null : "сервер opencode не найден");
     }
 
     private sealed record Node(string Id, string Title, string? Agent, long Updated, string? ParentId, string Status, bool Active, string? Detail);
@@ -527,32 +577,36 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
     public async Task<(bool ok, List<object> tree, int active, List<object> recent, string? error)> SessionsAsync(CancellationToken ct = default)
     {
         StartWatch();
-        var r = await ResolveAsync(ct);
-        if (r is null) return (false, new(), 0, new(), LastError ?? "сервер opencode не найден");
+        var backends = await ResolveAllAsync(ct);
+        if (backends.Count == 0) return (false, new(), 0, new(), LastError ?? "сервер opencode не найден");
         try
         {
-            using var http = Client(r.Value.password);
-            string? sessionsJson = null;
-            using (var resp = await http.GetAsync(r.Value.url + "/session", ct))
-            {
-                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                {
-                    LastError = "нужен OPENCODE_SERVER_PASSWORD";
-                    ResetPassword();
-                    Port = null; _verified = false;   // пара «порт+пароль» устарела — пересобрать заново
-                    return (false, new(), 0, new(), LastError);
-                }
-                if (resp.IsSuccessStatusCode) sessionsJson = await resp.Content.ReadAsStringAsync(ct);
-            }
-
-            var meta = ParseSessions(sessionsJson);
-            var statuses = await FetchStatusesAsync(http, r.Value.url, meta.Select(m => m.Directory), ct);
-
             var raw = new List<Node>();
-            foreach (var m in meta)
+            var seen = new HashSet<string>();
+            foreach (var b in backends)
             {
-                statuses.TryGetValue(m.Id, out var statusType);
-                raw.Add(new Node(m.Id, m.Title, m.Agent, m.Updated, m.Parent, PhaseFor(statusType), IsActiveStatus(statusType), null));
+                try
+                {
+                    using var http = Client(b.password);
+                    string? sessionsJson = null;
+                    using (var resp = await http.GetAsync(b.url + "/session", ct))
+                    {
+                        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized) { ResetPassword(); InvalidateBackends(); continue; }
+                        if (!resp.IsSuccessStatusCode) { InvalidateBackends(); continue; }
+                        sessionsJson = await resp.Content.ReadAsStringAsync(ct);
+                    }
+
+                    var meta = ParseSessions(sessionsJson);
+                    var statuses = await FetchStatusesAsync(http, b.url, meta.Select(m => m.Directory), ct);
+                    foreach (var m in meta)
+                    {
+                        if (!seen.Add(m.Id)) continue;   // id уже пришёл с другого backend-а — не дублируем
+                        statuses.TryGetValue(m.Id, out var statusType);
+                        raw.Add(new Node(m.Id, m.Title, m.Agent, m.Updated, m.Parent, PhaseFor(statusType), IsActiveStatus(statusType), null));
+                        _sessionBackend[m.Id] = b;       // запоминаем backend, чтобы «стоп» ушёл именно туда
+                    }
+                }
+                catch { InvalidateBackends(); }
             }
 
             // если активен потомок — родитель тоже активен
@@ -585,13 +639,30 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
             // корни: активные + недавно завершённые (последние 5 минут), но не больше 30
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var recentWindow = now - 5 * 60 * 1000;
-            var roots = nodes
-                .Where(n => n.ParentId is null || !byId.ContainsKey(n.ParentId))
+            bool IsRoot(Node n) => n.ParentId is null || !byId.ContainsKey(n.ParentId);
+            var rootNodes = nodes
+                .Where(IsRoot)
                 .Where(n => n.Active || n.Updated >= recentWindow)
                 .OrderByDescending(n => n.Updated)
                 .Take(30)
-                .Select(Shape)
                 .ToList();
+
+            // backend, у которого все сессии давно завершены, иначе «пропадает» из панели:
+            // добавляем по одной самой свежей корневой сессии на каждый сервер
+            var represented = rootNodes
+                .Select(n => _sessionBackend.TryGetValue(n.Id, out var b) ? b.url : null)
+                .ToHashSet();
+            foreach (var b in backends)
+            {
+                if (represented.Contains(b.url)) continue;
+                var newest = nodes.Where(IsRoot)
+                    .Where(n => _sessionBackend.TryGetValue(n.Id, out var nb) && nb.url == b.url)
+                    .OrderByDescending(n => n.Updated)
+                    .FirstOrDefault();
+                if (newest is not null) rootNodes.Add(newest);
+            }
+
+            var roots = rootNodes.Select(Shape).ToList();
 
             var activeCount = nodes.Count(n => n.Active);
             var recent = nodes.OrderByDescending(n => n.Updated).Take(15)
@@ -604,18 +675,20 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
         catch (Exception e) { LastError = e.Message; return (false, new(), 0, new(), e.Message); }
     }
 
-    /// <summary>Прервать сессию и все её дочерние (субагентов).</summary>
+    /// <summary>Прервать сессию и все её дочерние (субагентов) на ЕЁ backend-е.</summary>
     public async Task<(bool ok, int stopped, string? error)> StopAsync(string sessionId, CancellationToken ct = default)
     {
-        var r = await ResolveAsync(ct);
-        if (r is null) return (false, 0, LastError ?? "сервер opencode не найден");
+        var backends = await ResolveAllAsync(ct);
+        if (backends.Count == 0) return (false, 0, LastError ?? "сервер opencode не найден");
+        var target = await BackendOfAsync(sessionId, backends, ct);
+        if (target is null) return (false, 0, "сессия не найдена ни на одном сервере opencode");
         try
         {
-            using var http = Client(r.Value.password);
+            using var http = Client(target.Value.password);
             var ids = new List<string> { sessionId };
             try
             {
-                using var resp = await http.GetAsync(r.Value.url + "/session", ct);
+                using var resp = await http.GetAsync(target.Value.url + "/session", ct);
                 if (resp.IsSuccessStatusCode)
                 {
                     using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
@@ -646,13 +719,15 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
             {
                 try
                 {
-                    using var resp = await http.PostAsync($"{r.Value.url}/session/{id}/abort", null, ct);
+                    using var resp = await http.PostAsync($"{target.Value.url}/session/{id}/abort", null, ct);
                     if (resp.IsSuccessStatusCode) stopped++;
                 }
                 catch { }
             }
+            _sessionBackend.TryRemove(sessionId, out _);
             return stopped > 0 ? (true, stopped, null) : (false, 0, "не удалось прервать");
         }
         catch (Exception e) { return (false, 0, e.Message); }
     }
 }
+

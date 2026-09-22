@@ -48,7 +48,7 @@ You don't have to host your own server — just sign in and install the app:
 - **Per-model breakdown** — where exactly the budget goes.
 - **Request history** — a log of model calls.
 - **Payments and subscription** — payment status and current plan.
-- **Accurate active-chat tracking** — state comes from opencode itself, not from timers.
+- **Accurate active-chat tracking** — state comes from opencode itself, not from timers; sessions from all running opencode servers are collected into one tree.
 - **Status indicator on the avatar** — online / offline / connected to the server.
 - **Stop agents** — a "Stop" command is sent to the PC.
 - **Multi-account** — several accounts on one server.
