@@ -23,7 +23,8 @@ public static class ProcessEnv
     private const int ProcessQueryInformation = 0x0400;
     private const int ProcessVmRead = 0x0010;
 
-    /// <summary>Находит переменную окружения процесса по его PID.</summary>
+    /// <summary>Находит переменную окружения процесса по его PID.
+    /// EnvironmentSize в Windows часто равен 0, поэтому читаем блок кусками до двойного нуля.</summary>
     public static string? Find(int pid, string name)
     {
         var h = OpenProcess(ProcessQueryInformation | ProcessVmRead, false, pid);
@@ -37,12 +38,23 @@ public static class ProcessEnv
             var parms = ReadPtr(h, IntPtr.Add(peb, 0x20));
             if (parms == IntPtr.Zero) return null;
             var env = ReadPtr(h, IntPtr.Add(parms, 0x80));
-            var size = ReadPtr(h, IntPtr.Add(parms, 0x88)).ToInt64();
-            if (env == IntPtr.Zero || size <= 0 || size > 2_000_000) return null;
-            var buf = new byte[size];
-            if (!ReadProcessMemory(h, env, buf, buf.Length, out _)) return null;
-            foreach (var entry in System.Text.Encoding.Unicode.GetString(buf).Split('\0'))
+            if (env == IntPtr.Zero) return null;
+
+            var text = new System.Text.StringBuilder();
+            var chunk = new byte[4096];
+            var addr = env;
+            for (var i = 0; i < 64; i++)   // максимум 256 КБ
             {
+                if (!ReadProcessMemory(h, addr, chunk, chunk.Length, out var read) || read <= 0) break;
+                var s = System.Text.Encoding.Unicode.GetString(chunk, 0, (int)read);
+                text.Append(s);
+                if (s.Contains("\0\0")) break;   // конец блока окружения
+                addr = IntPtr.Add(addr, (int)read);
+            }
+
+            foreach (var entry in text.ToString().Split('\0'))
+            {
+                if (entry.Length == 0) break;    // пустая строка = конец блока
                 var i = entry.IndexOf('=');
                 if (i > 0 && entry[..i].Equals(name, StringComparison.OrdinalIgnoreCase))
                     return entry[(i + 1)..];
