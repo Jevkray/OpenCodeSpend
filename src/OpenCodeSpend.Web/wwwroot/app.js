@@ -19,8 +19,7 @@
       subPayments: "Подписка и платежи",
       colDate: "Дата", colPayment: "Платёж", colAmount: "Сумма",
       modelsSite: "Модели (сайт)",
-      chatsRealCost: "Чаты — реальная стоимость",
-      colChat: "Чат", colAgent: "Агент", colSteps: "Шаги", colTokens: "Токены", colCost: "Стоимость",
+      colCost: "Стоимость",
       recentSite: "Последние запросы (сайт)",
       colTime: "Время", colModel: "Модель", colIn: "Вх.", colOut: "Вых.", colCache: "Кэш",
       localTitle: "Локально — что выполняется сейчас",
@@ -50,7 +49,7 @@
       nothingRunning: "Сейчас ничего не выполняется",
       sessOne: "сессия", sessMany: "сессий", active: "активных",
       phaseWorking: "работает", phaseRetry: "повторяет", phaseDone: "завершена",
-      noDataPeriod: "Нет данных за период", noDataShort: "Нет данных",
+      noDataPeriod: "Нет данных за период",
       pcOne: "шт.", pcMany: "шт.",
       dayOne: "день", dayMany: "дней",
       sync: "Синхронизация: ",
@@ -62,9 +61,7 @@
       go5h: "Go: 5 часов", goWeek: "Go: неделя", goMonth: "Go: месяц",
       updated: "обновлено ", noDataLower: "нет данных", forMonth: " за месяц",
       noRecords: "Нет записей", noPayments: "Нет платежей",
-      sessionDots: "сессия ····", orphanSubagent: "Subagent без родителя ····",
-      modePaidHint: "только платные", modePaidShort: "платные", allLower: "все",
-      chatOne: "чат", chatMany: "чатов",
+      modePaidShort: "платные", allLower: "все",
       modelOne: "модель", modelMany: "моделей",
       recordOne: "запись", recordMany: "записей",
       subPlan: "План", subId: "ID подписки", subLast: "Последний платёж", subNext: "Следующий ~",
@@ -110,8 +107,7 @@
       subPayments: "Subscription & payments",
       colDate: "Date", colPayment: "Payment", colAmount: "Amount",
       modelsSite: "Models (site)",
-      chatsRealCost: "Chats — real cost",
-      colChat: "Chat", colAgent: "Agent", colSteps: "Steps", colTokens: "Tokens", colCost: "Cost",
+      colCost: "Cost",
       recentSite: "Recent requests (site)",
       colTime: "Time", colModel: "Model", colIn: "In", colOut: "Out", colCache: "Cache",
       localTitle: "Local — running now",
@@ -141,7 +137,7 @@
       nothingRunning: "Nothing running right now",
       sessOne: "session", sessMany: "sessions", active: "active",
       phaseWorking: "working", phaseRetry: "retrying", phaseDone: "done",
-      noDataPeriod: "No data for the period", noDataShort: "No data",
+      noDataPeriod: "No data for the period",
       pcOne: "pc", pcMany: "pcs",
       dayOne: "day", dayMany: "days",
       sync: "Sync: ",
@@ -153,9 +149,7 @@
       go5h: "Go: 5 hours", goWeek: "Go: week", goMonth: "Go: month",
       updated: "updated ", noDataLower: "no data", forMonth: " for the month",
       noRecords: "No records", noPayments: "No payments",
-      sessionDots: "session ····", orphanSubagent: "Subagent without parent ····",
-      modePaidHint: "paid only", modePaidShort: "paid", allLower: "all",
-      chatOne: "chat", chatMany: "chats",
+      modePaidShort: "paid", allLower: "all",
       modelOne: "model", modelMany: "models",
       recordOne: "record", recordMany: "records",
       subPlan: "Plan", subId: "Subscription ID", subLast: "Last payment", subNext: "Next ~",
@@ -670,21 +664,6 @@
     if (state.profile) renderSiteDaily(state.profile.summary.byDay);
   }
 
-  function renderSiteSessions(list) {
-    const tb = $("#siteSessionsTable tbody");
-    let rows = list || [];
-    if (state.mode === "paid") rows = rows.filter((x) => Number(x.cost) > 0);
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">' + t("noDataShort") + '</td></tr>'; $("#siteSessionsHint").textContent = ""; return; }
-    tb.innerHTML = rows.slice(0, 60).map((s) => `<tr>
-      <td class="cell-title" title="${esc(s.sessionId)}">${esc(s.orphan ? t("orphanSubagent") + String(s.sessionId || "").slice(-4) : (s.title || t("sessionDots") + String(s.sessionId || "").slice(-4)))}</td>
-      <td><span class="chip">${esc(s.agent || "—")}</span></td>
-      <td class="num">${num(s.steps)}</td>
-      <td class="num">${compact(s.tokens)}</td>
-      <td class="num">${usd(s.cost)}</td>
-    </tr>`).join("");
-    $("#siteSessionsHint").textContent = rows.length + " " + plural(rows.length, t("chatOne"), t("chatMany")) + " · " + (state.mode === "paid" ? t("modePaidHint") : t("allLower"));
-  }
-
   function renderSiteModels(byModel) {
     let rows = byModel || [];
     if (state.mode === "paid") rows = rows.filter((m) => Number(m.cost) > 0);
@@ -761,7 +740,6 @@
       renderSiteLimits(p.limits);
       renderSiteDaily(p.summary.byDay);
       renderSiteModels(p.summary.byModel);
-      renderSiteSessions(p.bySession);
       renderSiteRecent(p.summary.recent);
       renderSubscription(p.payments, p.liteSubscriptionId);
 
@@ -780,7 +758,6 @@
     document.querySelectorAll("#modes button").forEach((x) => x.classList.toggle("active", x === btn));
     if (state.profile) {
       renderSiteModels(state.profile.summary.byModel);
-      renderSiteSessions(state.profile.bySession);
       renderSiteRecent(state.profile.summary.recent);
     }
   });

@@ -1,127 +1,136 @@
+**English** | [Русский](README.ru.md)
+
 # OpenCode Spend
 
 [![Repository](https://img.shields.io/badge/GitHub-OpenCodeSpend-181717?logo=github&logoColor=white)](https://github.com/JevKray/OpenCodeSpend)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![WPF](https://img.shields.io/badge/WPF-Windows-0078D4?logo=windows&logoColor=white)](https://learn.microsoft.com/dotnet/desktop/wpf/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![SQLite](https://img.shields.io/badge/SQLite-%D1%85%D1%80%D0%B0%D0%BD%D0%B8%D0%BB%D0%B8%D1%89%D0%B5-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-storage-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![status](https://img.shields.io/badge/status-active-35c88a)](#)
 ![License](https://img.shields.io/badge/license-MIT-35c88a)
 [![Live Server](https://img.shields.io/badge/Live%20Server-agentstats.we4.online-35c88a?logo=googlechrome&logoColor=white)](https://agentstats.we4.online/)
 
-Мониторинг расходов и активности opencode. Приложение на ПК собирает данные и
-шлёт их на сервер, а на сервере работает веб-панель с аккаунтами: траты, лимиты
-Go, платежи, активные чаты с фазами и кнопкой остановки агентов. Всё считается по
-данным opencode.ai (консоль) и локальной базы opencode.
+Cost and activity monitoring for opencode. A desktop app collects the data and
+sends it to a server, where a web panel manages accounts: spending, Go limits,
+payments, live chats with phases, and a button to stop agents. Everything is
+computed from opencode.ai (console) data and the local opencode database.
 
-![Панель OpenCode Spend](docs/screenshot.png)
+<p align="center">
+  <img src="docs/desktop-en.png" width="82%" alt="OpenCode Spend dashboard — desktop" />
+</p>
+<p align="center">
+  <img src="docs/mobile-en.png" width="24%" alt="Mobile view" />
+  <img src="docs/tablet-en.png" width="36%" alt="Tablet view" />
+</p>
 
-*Веб-панель: траты, лимиты Go, разбивка по моделям и активные сессии.*
+*Web panel: spending, Go limits, per-model breakdown, and active sessions.*
 
-## 🌐 Готовый сервер — разворачивать не обязательно
+## 🌐 Hosted server — no need to deploy your own
 
-Панель уже работает: **https://agentstats.we4.online/**
+The panel is already running: **https://agentstats.we4.online/**
 
-Свой сервер поднимать не нужно — достаточно авторизоваться и поставить приложение:
+You don't have to host your own server — just sign in and install the app:
 
-1. Открой **https://agentstats.we4.online/** и войди (через Google или по коду доступа к аккаунту).
-2. Скачай приложение из раздела [**Releases**](../../releases) — архив `OpenCodeSpend-win-x64.zip`.
-3. Распакуй и запусти `OpenCodeSpend.exe`.
-4. На сайте открой **«Управление соединением»** и скопируй код подключения.
-5. В приложении нажми **«Подключить сервер»** и вставь код.
-6. Готово — траты, лимиты Go и живые сессии появятся в панели, откуда их можно смотреть с любого устройства.
+1. Open **https://agentstats.we4.online/** and sign in (with Google or your account access code).
+2. Download the app from [**Releases**](../../releases) — the `OpenCodeSpend-win-x64.zip` archive.
+3. Unpack it and run `OpenCodeSpend.exe`.
+4. On the site open **"Connection management"** and copy the pairing code.
+5. In the app click **"Connect server"** and paste the code.
+6. Done — spending, Go limits, and live sessions appear in the panel, viewable from any device.
 
-> Один аккаунт — один компьютер. Хочешь свой сервер — см. раздел «🐳 Развёртывание на сервере».
+> One account — one computer. Want your own server? See "🐳 Server deployment".
 
-## ✨ Возможности
+## ✨ Features
 
-- **Лимиты Go** — окна 5 часов / неделя / месяц с прогрессом.
-- **Траты по дням** — динамика расходов.
-- **Разбивка по моделям** — где именно уходит бюджет.
-- **История запросов** — журнал обращений к моделям.
-- **Платежи и подписка** — статус оплат и текущего плана.
-- **Точное отслеживание активных чатов** — состояние берётся из самого opencode, а не по таймерам.
-- **Индикатор состояния на аватаре** — онлайн / оффлайн / подключён к серверу.
-- **Остановка агентов** — команда «Стоп» уходит на ПК.
-- **Мультиаккаунт** — несколько аккаунтов на одном сервере.
-- **Привязка ПК по коду** — один аккаунт = один ПК.
-- **Вход Google/GitHub + код доступа** — провайдеры опциональны.
-- **Интерфейс на русском и английском** — язык определяется автоматически.
-- **Адаптивная вёрстка** — удобно с телефона и планшета.
-- **Мгновенные обновления через SSE** — браузер обновляется без перезагрузки.
+- **Go limits** — 5-hour / weekly / monthly windows with progress.
+- **Daily spending** — cost dynamics over time.
+- **Per-model breakdown** — where exactly the budget goes.
+- **Request history** — a log of model calls.
+- **Payments and subscription** — payment status and current plan.
+- **Accurate active-chat tracking** — state comes from opencode itself, not from timers.
+- **Status indicator on the avatar** — online / offline / connected to the server.
+- **Stop agents** — a "Stop" command is sent to the PC.
+- **Multi-account** — several accounts on one server.
+- **PC pairing by code** — one account = one PC.
+- **Google/GitHub login + access code** — providers are optional.
+- **RU/EN interface** — Russian and English, language detected automatically.
+- **Responsive layout** — comfortable on phone and tablet.
+- **Instant updates over SSE** — the browser updates without a reload.
 
-## 🏗 Архитектура
+## 🏗 Architecture
 
 ```
-┌─────────────── ПК (Windows) ───────────────┐        ┌──────── СЕРВЕР (Linux/Docker) ────────┐
-│ opencode  ──SSE──▶ сборщик ──POST /api/device/sync──▶│ аккаунты, SQLite, веб-панель          │
-│     ▲                   ◀── команды (стоп) ──────────│ /api/events (SSE) ──▶ браузер         │
+┌─────────────── PC (Windows) ───────────────┐        ┌──────── SERVER (Linux/Docker) ───────┐
+│ opencode  ──SSE──▶ collector ──POST /api/device/sync──▶│ accounts, SQLite, web panel         │
+│     ▲                   ◀── commands (stop) ──────────│ /api/events (SSE) ──▶ browser       │
 └────────────────────────────────────────────┘        └──────────────────────────────────────┘
 ```
 
-Одна сборка играет две роли. Роль задаётся конфигом `Spend:Mode` (`server` или
-`collector`) и наличием локальной базы opencode:
+A single build plays two roles. The role is set by the `Spend:Mode` config
+(`server` or `collector`) and by the presence of a local opencode database:
 
-- **СЕРВЕР** (`Spend__Mode=server`) — аккаунты, вход, хранение данных, веб-панель.
-  Сам в opencode не ходит.
-- **СБОРЩИК** (приложение на ПК, WPF + WebView2) — поднимает панель на случайном
-  локальном порту, собирает данные и отправляет их на сервер.
+- **SERVER** (`Spend__Mode=server`) — accounts, login, data storage, web panel.
+  It never talks to opencode itself.
+- **COLLECTOR** (desktop app, WPF + WebView2) — serves the panel on a random
+  local port, collects data, and sends it to the server.
 
-Связь: ПК привязывается к аккаунту кодом подключения (в нём зашифрован адрес
-сервера), дальше раз в секунду шлёт один запрос `POST /api/device/sync` и получает
-в ответе команды. Если сервер отвечает 401 — ПК отвязывается.
+Linking: the PC is paired to an account with a connection code (the server
+address is encrypted inside it); from then on it sends one
+`POST /api/device/sync` request per second and receives commands in the
+response. If the server replies 401, the PC is unlinked.
 
-## 🚀 Быстрый старт
+## 🚀 Quick start
 
-Сервер (локально, через Docker):
+Server (locally, via Docker):
 
 ```bash
 docker compose up -d --build
-# панель: http://127.0.0.1:15000
+# panel: http://127.0.0.1:15000
 ```
 
-Приложение для ПК:
+Desktop app:
 
 ```bash
 dotnet publish src/OpenCodeSpend.Desktop -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
 
-Первый вход: на сервере войти через Google/GitHub либо по коду доступа к аккаунту;
-затем «Управление соединением» → взять код → вставить в приложении в «Подключить
-сервер».
+First sign-in: on the server, log in with Google/GitHub or with your account
+access code; then "Connection management" → copy the code → paste it in the app
+under "Connect server".
 
-## 🐳 Развёртывание на сервере
+## 🐳 Server deployment
 
-Нужен Linux-сервер с Docker и плагином `docker compose`.
+You need a Linux server with Docker and the `docker compose` plugin.
 
-**Что скопировать.** Папку проекта с `docker-compose.yml`, `Dockerfile` и
-исходниками `src/OpenCodeSpend.Web`. Образ собирается двухстадийно:
-`mcr.microsoft.com/dotnet/sdk:10.0` выполняет `restore` и
-`publish -c Release -o /app`, затем рантайм `mcr.microsoft.com/dotnet/aspnet:10.0`
-копирует `/app` и запускает `dotnet OpenCodeSpend.Web.dll`.
+**What to copy.** The project folder with `docker-compose.yml`, `Dockerfile`, and
+the `src/OpenCodeSpend.Web` sources. The image builds in two stages:
+`mcr.microsoft.com/dotnet/sdk:10.0` runs `restore` and
+`publish -c Release -o /app`, then the `mcr.microsoft.com/dotnet/aspnet:10.0`
+runtime copies `/app` and starts `dotnet OpenCodeSpend.Web.dll`.
 
-**Конфигурация.** Создайте `.env` на основе `.env.example` и задайте значения.
+**Configuration.** Create a `.env` based on `.env.example` and set the values.
 
-**Запуск.**
+**Run.**
 
 ```bash
-docker compose up -d --build   # собрать и поднять
-docker compose logs -f         # логи в реальном времени
-docker compose down            # остановить (тома сохраняются)
+docker compose up -d --build   # build and start
+docker compose logs -f         # live logs
+docker compose down            # stop (volumes are kept)
 ```
 
-**Порты.** Внутри контейнера приложение слушает `5199`, наружу порт публикуется
-только на loopback хоста:
+**Ports.** Inside the container the app listens on `5199`; externally the port is
+published only on the host's loopback:
 
 ```yaml
 ports:
   - "127.0.0.1:15000:5199"
 ```
 
-Публиковать `5199` напрямую в интернет не нужно — снаружи доступ идёт через
-reverse-proxy на `127.0.0.1:15000`.
+There's no need to expose `5199` to the internet directly — outside access goes
+through a reverse proxy to `127.0.0.1:15000`.
 
-**Тома.** Данные переживают пересборку благодаря двум томам:
+**Volumes.** Data survives rebuilds thanks to two volumes:
 
 ```yaml
 volumes:
@@ -129,22 +138,22 @@ volumes:
   - dpkeys:/root/.aspnet/DataProtection-Keys
 ```
 
-`appdata` хранит SQLite-базу `/data/opencodespend.db`. `dpkeys` хранит ключи
-ASP.NET Core Data Protection: при их потере инвалидируются cookie сессий и все
-пользователи разлогинятся, а данные аккаунтов останутся.
+`appdata` stores the SQLite database `/data/opencodespend.db`. `dpkeys` stores
+the ASP.NET Core Data Protection keys: lose them and session cookies are
+invalidated and all users get logged out, while account data stays intact.
 
-**Обновление.** `docker compose up -d --build` пересобирает и поднимает заново.
-Для автозапуска включите у службы Docker политику `restart: unless-stopped`
-(уже задана в compose) — контейнер поднимется после перезагрузки хоста.
+**Updating.** `docker compose up -d --build` rebuilds and restarts. For autostart,
+enable the `restart: unless-stopped` policy on the Docker service (already set in
+compose) — the container comes back up after a host reboot.
 
-## 🔒 Домен и HTTPS
+## 🔒 Domain and HTTPS
 
-Панель сама HTTPS не терминирует — нужен Caddy или nginx на хосте, который
-слушает домен, выдаёт TLS и проксирует на `127.0.0.1:15000`. Приложение читает
-заголовки `X-Forwarded-Proto` и `X-Forwarded-Host` и строит ссылки, включая
-OAuth-редиректы, из схемы и хоста запроса.
+The panel does not terminate HTTPS itself — you need Caddy or nginx on the host
+to listen on the domain, serve TLS, and proxy to `127.0.0.1:15000`. The app reads
+the `X-Forwarded-Proto` and `X-Forwarded-Host` headers and builds links, including
+OAuth redirects, from the request's scheme and host.
 
-Пример Caddy:
+Caddy example:
 
 ```caddyfile
 ocspend.example.com {
@@ -152,7 +161,7 @@ ocspend.example.com {
 }
 ```
 
-Пример nginx (TLS добавьте отдельно, например через certbot):
+nginx example (add TLS separately, e.g. with certbot):
 
 ```nginx
 server {
@@ -169,8 +178,8 @@ server {
 }
 ```
 
-Для потока `/api/events` (SSE) в nginx **обязательно** отключить буферизацию,
-иначе обновления не будут приходить мгновенно:
+For the `/api/events` (SSE) stream in nginx you **must** disable buffering,
+otherwise updates won't arrive instantly:
 
 ```nginx
 location /api/events {
@@ -182,93 +191,93 @@ location /api/events {
 }
 ```
 
-**Адреса возврата OAuth.** В консолях провайдеров прописать:
+**OAuth redirect URIs.** Set these in the provider consoles:
 
 - Google Cloud Console → OAuth 2.0 Client ID → Authorized redirect URIs:
-  `https://<домен>/signin-google`
-- GitHub → OAuth App → Authorization callback URL: `https://<домен>/signin-github`
+  `https://<domain>/signin-google`
+- GitHub → OAuth App → Authorization callback URL: `https://<domain>/signin-github`
 
-Адрес приложение вычисляет из самого запроса, поэтому он должен совпадать с тем,
-по которому открыта панель. Если OAuth не нужен — вход по коду доступа к аккаунту
-работает всегда.
+The app derives the address from the request itself, so it must match the one the
+panel is opened at. If you don't need OAuth, logging in with an account access
+code always works.
 
-## ⚙️ Переменные окружения
+## ⚙️ Environment variables
 
-`docker-compose.yml` читает из `.env` эти переменные. Секреты живут только в
-`.env` (в образ не попадают) и передаются контейнеру как `Spend__*`.
+`docker-compose.yml` reads these variables from `.env`. Secrets live only in
+`.env` (they never make it into the image) and are passed to the container as
+`Spend__*`.
 
-| Переменная | Значение | Зачем |
+| Variable | Value | Purpose |
 | --- | --- | --- |
-| `TZ` | `Europe/Moscow` | часовой пояс сервера |
-| `PAIRING_TTL` | `5` | срок жизни кода подключения ПК, минуты |
-| `GOOGLE_CLIENT_ID` | `` | OAuth-клиент Google (опционально) |
-| `GOOGLE_CLIENT_SECRET` | `` | секрет OAuth-клиента Google |
-| `GITHUB_CLIENT_ID` | `` | OAuth-клиент GitHub (опционально) |
-| `GITHUB_CLIENT_SECRET` | `` | секрет OAuth-клиента GitHub |
+| `TZ` | `Europe/Moscow` | server time zone |
+| `PAIRING_TTL` | `5` | PC pairing code lifetime, minutes |
+| `GOOGLE_CLIENT_ID` | `` | Google OAuth client (optional) |
+| `GOOGLE_CLIENT_SECRET` | `` | Google OAuth client secret |
+| `GITHUB_CLIENT_ID` | `` | GitHub OAuth client (optional) |
+| `GITHUB_CLIENT_SECRET` | `` | GitHub OAuth client secret |
 
-## 🔌 Порты
+## 🔌 Ports
 
-| Порт | Где | Назначение |
+| Port | Where | Purpose |
 | --- | --- | --- |
-| `5199` | внутри контейнера | `ASPNETCORE_URLS` / `EXPOSE`, менять не нужно |
-| `15000` | проброс на хосте | `127.0.0.1:15000:5199`, вход для reverse-proxy |
-| `80` / `443` | reverse-proxy | Caddy/nginx, публикация в интернет |
-| случайный | локально на ПК | панель приложения, только `127.0.0.1` |
+| `5199` | inside the container | `ASPNETCORE_URLS` / `EXPOSE`, no need to change |
+| `15000` | host mapping | `127.0.0.1:15000:5199`, entry point for the reverse proxy |
+| `80` / `443` | reverse proxy | Caddy/nginx, public exposure |
+| random | local on the PC | app panel, `127.0.0.1` only |
 
-## 🧭 Пример работы
+## 🧭 Example workflow
 
-1. Развернули сервер и открыли панель по своему домену.
-2. Вошли — через Google/GitHub или по коду доступа к аккаунту.
-3. На панели открыли «Управление соединением» и взяли код подключения.
-4. Вставили код в приложении в «Подключить сервер».
-5. На панели появились траты и лимиты Go.
-6. В разделе «Сессии» видно активные чаты с фазами (печатает, инструмент, команда).
-7. Нажали «Стоп» — агент остановлен, состояние обновилось мгновенно.
+1. Deployed the server and opened the panel on your domain.
+2. Signed in — with Google/GitHub or an account access code.
+3. In the panel opened "Connection management" and copied the pairing code.
+4. Pasted the code into the app under "Connect server".
+5. Spending and Go limits appeared in the panel.
+6. The "Sessions" section shows active chats with phases (typing, tool, command).
+7. Clicked "Stop" — the agent stopped, and the state updated instantly.
 
-## 🧱 Стек
+## 🧱 Stack
 
 - **.NET 10**
-- **ASP.NET Core** — серверная логика, API и веб-панель
-- **WPF + WebView2** — приложение для ПК
-- **SQLite** — единственное хранилище, один файл
-- **Docker** — сборка и развёртывание сервера
+- **ASP.NET Core** — server logic, API, and web panel
+- **WPF + WebView2** — desktop app
+- **SQLite** — the only storage, a single file
+- **Docker** — server build and deployment
 
-## 📁 Структура
+## 📁 Structure
 
 ```
 OpencodeSpend/
 ├─ src/
-│  └─ OpenCodeSpend.Web/       # логика + wwwroot (index.html, app.js, styles.css)
-│  └─ OpenCodeSpend.Desktop/   # WPF + WebView2, сбор и отправка данных
+│  └─ OpenCodeSpend.Web/       # logic + wwwroot (index.html, app.js, styles.css)
+│  └─ OpenCodeSpend.Desktop/   # WPF + WebView2, data collection and upload
 ├─ tests/
-│  └─ OpenCodeSpend.Tests/     # самопроверки
-├─ docs/                       # скриншот
+│  └─ OpenCodeSpend.Tests/     # self-checks
+├─ docs/                       # screenshots
 ├─ docker-compose.yml
 ├─ Dockerfile
 └─ .env.example
 ```
 
-## 🧪 Тесты
+## 🧪 Tests
 
 ```bash
 dotnet run --project tests/OpenCodeSpend.Tests
 ```
 
-42 самопроверки.
+42 self-checks.
 
-## ❓ Частые проблемы
+## ❓ Common issues
 
-- **`redirect_uri_mismatch`** — адрес возврата не прописан в консоли провайдера.
-- **В панели «нет данных»** — ПК не привязан или отвязан (сервер ответил 401).
-- **Профиль не подтягивается** — в приложении истекла сессия opencode, нужно войти
-  заново.
-- **После пересборки пропали сессии** — проверьте, что том `dpkeys` на месте.
+- **`redirect_uri_mismatch`** — the redirect URI isn't configured in the provider console.
+- **The panel shows "no data"** — the PC isn't paired or got unlinked (server replied 401).
+- **The profile doesn't load** — the opencode session in the app has expired; sign in again.
+- **Sessions disappeared after a rebuild** — check that the `dpkeys` volume is in place.
 
 ---
 
-## 📄 Лицензия
+## 📄 License
 
-Проект распространяется по лицензии [MIT](LICENSE). Репозиторий открыт.
+The project is distributed under the [MIT](LICENSE) license. The repository is open.
 
 ## 💬 Contacts & Support
 

@@ -155,11 +155,6 @@ main {
 /* ---------- table ---------- */
 .table-wrap { overflow: auto; max-height: 300px; border-radius: var(--radius-sm); }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-#siteSessionsTable td.cell-title {
-  width: 16ch; min-width: 16ch; max-width: 16ch;
-  white-space: normal; overflow-wrap: anywhere; word-break: break-word; vertical-align: top;
-}
-#siteSessionsTable th:last-child, #siteSessionsTable td:last-child { width: 100px; }
 .data-table th {
   position: sticky; top: 0; background: var(--surface); color: var(--faint); font-weight: 560;
   text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; letter-spacing: .3px;
