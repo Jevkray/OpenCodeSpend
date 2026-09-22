@@ -6,6 +6,7 @@
 [![SQLite](https://img.shields.io/badge/SQLite-%D1%85%D1%80%D0%B0%D0%BD%D0%B8%D0%BB%D0%B8%D1%89%D0%B5-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![status](https://img.shields.io/badge/status-active-35c88a)](#)
 [![repository](https://img.shields.io/badge/repository-private-f2555a?logo=github&logoColor=white)](#)
+![License](https://img.shields.io/badge/license-MIT-35c88a)
 
 Мониторинг расходов и активности opencode. Приложение на ПК собирает данные и
 шлёт их на сервер, а на сервере работает веб-панель с аккаунтами: траты, лимиты
@@ -246,4 +247,6 @@ dotnet run --project tests/OpenCodeSpend.Tests
 
 ---
 
-Репозиторий приватный. Все права защищены. © 2026 OpenCode Spend.
+## 📄 Лицензия
+
+Проект распространяется по лицензии [MIT](LICENSE). Репозиторий сейчас приватный.
