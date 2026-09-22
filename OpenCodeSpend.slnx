@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OpenCodeSpend.Desktop/OpenCodeSpend.Desktop.csproj" />
+    <Project Path="src/OpenCodeSpend.Web/OpenCodeSpend.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenCodeSpend.Tests/OpenCodeSpend.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,20 @@
+# сборка
+bin/
+obj/
+dist/
+*.exe
+*.pdb
+
+# секреты и локальные данные
+.env
+*.db
+*.db-wal
+*.db-shm
+machine-id.txt
+device.json
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo

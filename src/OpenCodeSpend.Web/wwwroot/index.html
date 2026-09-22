@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0e14" />
+<title>OpenCode Spend — аналитика трат</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M4 20V6.5L10 4l6 2.5V20h-4v-6H8v6H4Zm12 0V9l4-1.6V20h-4Z"/></svg>
+    </span>
+    <div>
+      <div class="brand-title">OpenCode Spend</div>
+      <div class="brand-sub" id="tzLabel">—</div>
+    </div>
+  </div>
+  <div class="controls">
+    <span class="status" id="status"><span class="dot"></span>подключение…</span>
+    <div class="segmented" id="modes" title="Показывать только платные операции или все">
+      <button data-mode="paid" class="active">Затраты</button>
+      <button data-mode="all">Все</button>
+    </div>
+    <button class="btn danger" id="stopBtn" title="Активные сессии: посмотреть и остановить">Сессии<span id="stopCount"></span></button>
+    <button class="btn" id="serverLinkBtn" hidden title="Привязать этот компьютер к серверу по коду">Подключить сервер</button>
+    <button class="btn accent" id="devicesBtn" hidden title="Состояние соединения аккаунта с компьютером">Управление соединением</button>
+    <span class="account" id="userLabel"></span>
+  </div>
+</header>
+
+<main>
+  <div class="alert" id="alert" hidden></div>
+
+  <section class="kpis" id="kpis"></section>
+
+
+
+  <div class="section-label">Профиль opencode — данные с их стороны <span id="accountLabel"></span></div>
+
+  <section class="grid">
+    <article class="card span-5">
+      <div class="card-head"><h2 data-ico="gauge">OpenCode Go — лимиты</h2><span class="hint" id="siteLimitsHint">&nbsp;</span></div>
+      <div class="budgets" id="siteLimits"></div>
+    </article>
+
+    <article class="card span-7">
+      <div class="card-head">
+        <h2 data-ico="calendar">Траты по дням</h2>
+        <div class="card-tools">
+          <button id="dayPrev" title="Предыдущий месяц">‹</button>
+          <div id="dayMonth" class="month-picker"></div>
+          <button id="dayNext" title="Следующий месяц">›</button>
+          <span class="hint" id="siteDayHint"></span>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="chartSiteDaily"></canvas></div>
+    </article>
+
+    <article class="card span-5">
+      <div class="card-head"><h2 data-ico="card">Подписка и платежи</h2><span class="hint" id="subHint"></span></div>
+      <div class="sub-block" id="subscription"></div>
+      <div class="table-wrap" style="margin-top:10px">
+        <table class="data-table" id="paymentsTable">
+          <thead><tr><th>Дата</th><th>Платёж</th><th class="num">Сумма</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="card span-7">
+      <div class="card-head"><h2 data-ico="bars">Модели (сайт)</h2><span class="hint" id="siteModelsHint"></span></div>
+      <div class="chart-box"><canvas id="chartSiteModels"></canvas></div>
+    </article>
+
+    <article class="card span-12">
+      <div class="card-head"><h2 data-ico="chat">Чаты — реальная стоимость</h2><span class="hint" id="siteSessionsHint"></span></div>
+      <div class="table-wrap">
+        <table class="data-table" id="siteSessionsTable">
+          <thead><tr><th>Чат</th><th>Агент</th><th class="num">Шаги</th><th class="num">Токены</th><th class="num">Стоимость</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="card span-12">
+      <div class="card-head"><h2 data-ico="list">Последние запросы (сайт)</h2><span class="hint" id="siteRecentHint"></span></div>
+      <div class="table-wrap">
+        <table class="data-table" id="siteRecentTable">
+          <thead><tr><th>Время</th><th>Модель</th><th class="num">Вх.</th><th class="num">Вых.</th><th class="num">Кэш</th><th class="num">Стоимость</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </article>
+  </section>
+
+  <div class="section-label">Локально — что выполняется сейчас <span id="localLabel"></span></div>
+
+  <section class="grid">
+    <article class="card span-12">
+      <div class="card-head"><h2 data-ico="pulse">Прямой эфир</h2><span class="hint" id="liveHint">&nbsp;</span></div>
+      <div class="live" id="live"></div>
+    </article>
+  </section>
+
+  <footer class="foot">
+    <span id="footLeft">—</span>
+    <span id="footRight">—</span>
+  </footer>
+</main>
+
+<dialog id="stopDialog" class="stop-dialog">
+  <div class="stop-head">
+    <h2 data-ico="pulse">Активные сессии</h2>
+    <button type="button" class="x" id="stopClose" title="Закрыть">✕</button>
+  </div>
+  <div id="stopBody" class="stop-body"><div class="empty">ищем активные сессии…</div></div>
+  <div class="stop-foot">
+    <span class="hint" id="stopSummary"></span>
+    <button type="button" class="btn" id="stopRefresh">Обновить</button>
+  </div>
+</dialog>
+
+<dialog id="devicesDialog" class="stop-dialog server-dialog">
+  <div class="stop-head">
+    <h2 data-ico="server">Управление соединением</h2>
+    <button type="button" class="x" id="devicesClose" title="Закрыть">✕</button>
+  </div>
+  <div class="stop-body">
+    <div class="srv-state" id="connState"><span class="dot"></span><span class="srv-state-text">—</span></div>
+    <div class="srv-row">
+      <span class="srv-label">Аккаунт</span>
+      <span class="srv-value" id="connAccount">—</span>
+    </div>
+    <div class="srv-block">
+      <div class="srv-block-head">
+        <span>Компьютер аккаунта</span>
+        <span class="hint" id="connHint"></span>
+      </div>
+      <div id="connDevices" class="srv-devices"><div class="empty">—</div></div>
+    </div>
+    <div class="srv-foot">
+      <span class="hint">Разрыв отключает компьютер от аккаунта на всех устройствах.</span>
+      <button type="button" class="btn danger" id="disconnectAll">Разорвать соединение с ПК</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="serverDialog" class="stop-dialog server-dialog">
+  <div class="stop-head">
+    <h2 data-ico="server">Подключение к серверу</h2>
+    <button type="button" class="x" id="serverClose" title="Закрыть">✕</button>
+  </div>
+  <div class="stop-body">
+    <div class="srv-state" id="srvState">
+      <span class="dot"></span><span class="srv-state-text">—</span>
+    </div>
+    <div class="srv-row">
+      <span class="srv-label">Аккаунт</span>
+      <span class="srv-value" id="srvAccount">—</span>
+    </div>
+    <div class="srv-row">
+      <span class="srv-label">Адрес сервера</span>
+      <span class="srv-value">
+        <span class="srv-url" id="srvUrl">—</span>
+        <button type="button" class="btn ghost" id="serverCopy" title="Скопировать адрес">Копировать</button>
+      </span>
+    </div>
+    <div class="srv-block">
+      <div class="srv-block-head">
+        <span>Компьютеры в аккаунте</span>
+        <span class="hint" id="srvDevicesHint"></span>
+      </div>
+      <div id="srvDevices" class="srv-devices"><div class="empty">—</div></div>
+    </div>
+    <div class="srv-foot">
+      <span class="hint">Отключение разрывает связь этого компьютера с сервером.</span>
+      <button type="button" class="btn danger" id="serverUnlink">Отключиться от сервера</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="accountDialog" class="stop-dialog">
+  <div class="stop-head">
+    <h2 data-ico="server">Код доступа к аккаунту</h2>
+    <button type="button" class="x" id="accountClose" title="Закрыть">✕</button>
+  </div>
+  <div class="stop-body">
+    <p class="hint" style="margin:0 0 12px">
+      Сохраните код — по нему можно войти в этот аккаунт с любого устройства и видеть те же ПК.
+    </p>
+    <div class="pair-box">
+      <button type="button" class="btn accent" id="accountCodeBtn">Получить код</button>
+      <div class="pair-code" id="accountCodeBox" hidden></div>
+    </div>
+    <p class="hint" style="margin-top:14px">После создания нового кода старый перестаёт работать.</p>
+  </div>
+</dialog>
+
+<dialog id="confirmDialog" class="stop-dialog confirm-dialog">
+  <div class="stop-head">
+    <h2 id="confirmTitle">Подтвердите действие</h2>
+    <button type="button" class="x" id="confirmClose" title="Закрыть">✕</button>
+  </div>
+  <div class="stop-body">
+    <p class="hint" id="confirmText" style="margin:0 0 4px"></p>
+    <div class="srv-foot">
+      <button type="button" class="btn ghost" id="confirmNo">Отмена</button>
+      <button type="button" class="btn danger" id="confirmYes">Разорвать</button>
+    </div>
+  </div>
+</dialog>
+
+<div id="toasts" class="toasts"></div>
+
+<script src="/lib/chart.umd.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

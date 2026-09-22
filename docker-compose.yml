@@ -1,0 +1,26 @@
+services:
+  app:
+    build: .
+    environment:
+      Spend__Mode: server
+      Spend__DatabasePath: "/data/opencodespend.db"
+      Spend__TimeZone: "${TZ:-Europe/Moscow}"
+      Spend__GoogleClientId: "${GOOGLE_CLIENT_ID:-}"
+      Spend__GoogleClientSecret: "${GOOGLE_CLIENT_SECRET:-}"
+      Spend__GitHubClientId: "${GITHUB_CLIENT_ID:-}"
+      Spend__GitHubClientSecret: "${GITHUB_CLIENT_SECRET:-}"
+      # Вход в панель: Google и GitHub. Адрес возврата приложение считает из самого запроса,
+      # поэтому в консолях провайдеров надо прописать https://<домен>/signin-google и /signin-github.
+
+      Spend__ProfileSyncSeconds: "10"
+      Spend__PairingTtlMinutes: "${PAIRING_TTL:-5}"
+    ports:
+      # Р»РѕРєР°Р»СЊРЅРѕ вЂ” С‚РѕР»СЊРєРѕ СЌС‚РѕС‚ РєРѕРјРїСЊСЋС‚РµСЂ; РЅР° СЃРµСЂРІРµСЂРµ РґРѕСЃС‚СѓРї РёРґС‘С‚ С‡РµСЂРµР· reverse-proxy
+      - "127.0.0.1:15000:5199"
+    volumes:
+      - appdata:/data
+      - dpkeys:/root/.aspnet/DataProtection-Keys
+
+volumes:
+  appdata:
+  dpkeys:

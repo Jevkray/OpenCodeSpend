@@ -1,0 +1,30 @@
+﻿<Window x:Class="OpenCodeSpend.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="OpenCode Spend" Height="860" Width="1320"
+        MinHeight="320" MinWidth="320"
+        Icon="/app.ico"
+        WindowStartupLocation="CenterScreen"
+        Background="#0a0d13">
+    <Grid>
+        <wv2:WebView2 x:Name="Web" />
+        <Border x:Name="Overlay" Background="#0b0e14">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520">
+                <TextBlock Text="OpenCode Spend" Foreground="#e7ebf3" FontSize="24" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" />
+                <TextBlock x:Name="OverlayText" Text="запуск сервиса:" Foreground="#8b93a7"
+                           Margin="0,10,0,0" HorizontalAlignment="Center" TextWrapping="Wrap"
+                           TextAlignment="Center" />
+                <Button x:Name="LoginBtn" Content="Войти в opencode" Visibility="Collapsed"
+                        Margin="0,22,0,0" Padding="22,10" HorizontalAlignment="Center"
+                        Background="#4f8cff" Foreground="#ffffff" BorderThickness="0"
+                        FontSize="14" FontWeight="SemiBold" Cursor="Hand" />
+                <TextBlock x:Name="OverlayHint" Visibility="Collapsed"
+                           Text="Войдите через Google или GitHub — после этого данные появятся в панели"
+                           Foreground="#5f6880" FontSize="12" Margin="0,12,0,0"
+                           HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
