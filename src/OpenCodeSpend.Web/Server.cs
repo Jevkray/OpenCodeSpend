@@ -502,6 +502,7 @@ public static class Server
                 }
                 if (p.Payments is { Count: > 0 } || !string.IsNullOrWhiteSpace(p.LiteSubId))
                     await ps.SavePaymentsAsync(p.Payments ?? new(), p.LiteSubId, uid, ct);
+                if (p.Models is { Count: > 0 }) await ps.ReplaceModelsAsync(p.Models, uid, ct);
                 profileOk = true;
             }
 
@@ -742,6 +743,7 @@ public static class Server
             Limits = await ps.GetProfileAsync(null, ct),
             Usage = await ps.ExportSinceAsync(DateTimeOffset.UnixEpoch, null, ct),
             Payments = await ps.PaymentRecordsAsync(null, ct),
+            Models = await ps.ModelsAsync(null, ct),
             LiteSubId = await ps.LiteSubscriptionIdAsync(null, ct),
         }));
 
@@ -769,7 +771,10 @@ public static class Server
             return Results.Ok(new
             {
                 hasData = limits is not null,
-                workspace = cfg.ZenWorkspace,
+                // настройка важнее; иначе показываем определённый автоматически и сохранённый org id
+                workspace = string.IsNullOrWhiteSpace(cfg.ZenWorkspace)
+                    ? (await s.GetStateAsync("zen_workspace", uid, ct) ?? "")
+                    : cfg.ZenWorkspace,
                 limits,
                 periods = new { today = per.today, week = per.week, month = per.month, todayCount = per.todayCount, totalCount = per.totalCount },
                 bySession = await ps.BySessionAsync(100, uid, ct),

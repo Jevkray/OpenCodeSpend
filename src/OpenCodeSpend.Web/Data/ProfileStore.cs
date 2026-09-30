@@ -76,6 +76,33 @@ public sealed class ProfileStore(Db db)
         if (rows.Count == 0) return Task.FromResult(0);
         using var cn = _db.Open();
         using var tx = cn.BeginTransaction();
+        WriteRows(cn, tx, rows, uid);
+        tx.Commit();
+        return Task.FromResult(rows.Count);
+    }
+
+    /// <summary>Заменяет записи трат за охваченный период: старые строки этого диапазона удаляются, пишутся новые.
+    /// Консоль отдаёт только дневные агрегаты, поэтому накопленные построчные записи за те же дни нужно убрать, иначе двойной счёт.</summary>
+    public Task<int> ReplaceUsageAsync(List<SiteUsage> rows, string? uid = null, CancellationToken ct = default)
+    {
+        if (rows.Count == 0) return Task.FromResult(0);
+        using var cn = _db.Open();
+        using var tx = cn.BeginTransaction();
+        var min = rows.Min(r => r.TimeCreated);
+        using (var del = cn.CreateCommand())
+        {
+            del.Transaction = tx;
+            del.CommandText = "delete from site_usage where user_id=@u and time_created >= @1";
+            Owner(del, uid); Bind(del, Db.Iso(min));
+            del.ExecuteNonQuery();
+        }
+        WriteRows(cn, tx, rows, uid);
+        tx.Commit();
+        return Task.FromResult(rows.Count);
+    }
+
+    private static void WriteRows(SqliteConnection cn, SqliteTransaction tx, List<SiteUsage> rows, string? uid)
+    {
         using var cmd = cn.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = """
@@ -101,11 +128,55 @@ public sealed class ProfileStore(Db db)
             cmd.Parameters[11].Value = (object?)r.KeyId ?? DBNull.Value;
             cmd.ExecuteNonQuery();
         }
-        tx.Commit();
-        return Task.FromResult(rows.Count);
     }
 
-    /// <summary>Свод: итоги, по дням (в нужном часовом поясе), по моделям, последние записи.</summary>
+    /// <summary>Заменяет разбивку по моделям, полученную из консоли (агрегат за период).</summary>
+    public Task ReplaceModelsAsync(List<SiteModelRow> rows, string? uid = null, CancellationToken ct = default)
+    {
+        using var cn = _db.Open();
+        using var tx = cn.BeginTransaction();
+        using (var del = cn.CreateCommand())
+        {
+            del.Transaction = tx;
+            del.CommandText = "delete from site_model where user_id=@u";
+            Owner(del, uid);
+            del.ExecuteNonQuery();
+        }
+        if (rows.Count > 0)
+        {
+            using var ins = cn.CreateCommand();
+            ins.Transaction = tx;
+            ins.CommandText = "insert into site_model(user_id,provider,model,cost,requests) values(@u,@1,@2,@3,@4)";
+            for (var i = 0; i < 4; i++) ins.Parameters.Add(new SqliteParameter { ParameterName = "@" + (i + 1) });
+            Owner(ins, uid);
+            foreach (var r in rows)
+            {
+                ins.Parameters[0].Value = r.Provider;
+                ins.Parameters[1].Value = r.Model;
+                ins.Parameters[2].Value = (double)r.Cost;
+                ins.Parameters[3].Value = r.Count;
+                ins.ExecuteNonQuery();
+            }
+        }
+        tx.Commit();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Разбивка по моделям — для отправки на сервер.</summary>
+    public Task<List<SiteModelRow>> ModelsAsync(string? uid = null, CancellationToken ct = default)
+    {
+        var list = new List<SiteModelRow>();
+        using var cn = _db.Open();
+        using var cmd = cn.CreateCommand();
+        cmd.CommandText = "select provider, model, cost, requests from site_model where (@u is null or user_id=@u) order by cost desc";
+        Uid(cmd, uid);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new SiteModelRow(r.GetString(0), r.GetString(1), (decimal)r.GetDouble(2), r.GetInt64(3)));
+        return Task.FromResult(list);
+    }
+
+    /// <summary>Свод: итоги, по дням (в нужном часовом поясе), по моделям.</summary>
     public Task<Dictionary<string, object>> SummaryAsync(string tz, string? uid = null, CancellationToken ct = default)
     {
         var tzi = ResolveTz(tz);
@@ -147,45 +218,17 @@ public sealed class ProfileStore(Db db)
         res["byDay"] = days.OrderByDescending(k => k.Key)
             .Select(kv => new { day = kv.Key, cost = (decimal)kv.Value.cost, count = kv.Value.n, tokens = kv.Value.tok }).ToList();
 
+        // разбивка по моделям приходит из консоли готовым агрегатом (построчных записей там нет)
         var models = new List<object>();
         using (var cmd = cn.CreateCommand())
         {
-            cmd.CommandText = """
-                select coalesce(provider,'?'), coalesce(model,'?'), sum(cost), count(*)
-                from site_usage where (@u is null or user_id=@u) group by 1,2 order by 3 desc
-                """;
+            cmd.CommandText = "select provider, model, cost, requests from site_model where (@u is null or user_id=@u) order by cost desc";
             Uid(cmd, uid);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 models.Add(new { provider = r.GetString(0), model = r.GetString(1), cost = (decimal)r.GetDouble(2), count = r.GetInt64(3) });
         }
         res["byModel"] = models;
-
-        var recent = new List<object>();
-        using (var cmd = cn.CreateCommand())
-        {
-            cmd.CommandText = """
-                select id, time_created, model, provider, input_tokens, output_tokens, reasoning_tokens, cache_read, cost, session_id
-                from site_usage where (@u is null or user_id=@u) order by time_created desc limit 100
-                """;
-            Uid(cmd, uid);
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-                recent.Add(new
-                {
-                    id = r.GetString(0),
-                    time = Db.Parse(r.GetString(1)).UtcDateTime,
-                    model = Str(r, 2),
-                    provider = Str(r, 3),
-                    input = r.GetInt64(4),
-                    output = r.GetInt64(5),
-                    reasoning = r.GetInt64(6),
-                    cacheRead = r.GetInt64(7),
-                    cost = (decimal)r.GetDouble(8),
-                    sessionId = Str(r, 9),
-                });
-        }
-        res["recent"] = recent;
         return Task.FromResult(res);
     }
 

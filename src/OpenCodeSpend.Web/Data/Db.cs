@@ -93,6 +93,11 @@ public sealed class Db(string path)
           refunded integer not null default 0, receipt_url text,
           synced_at text default (datetime('now')), primary key(user_id, id));
 
+        create table if not exists site_model(
+          user_id text not null, provider text not null, model text not null,
+          cost real not null default 0, requests integer not null default 0,
+          primary key(user_id, provider, model));
+
         create table if not exists control(
           user_id text not null, key text not null, value text, updated text default (datetime('now')),
           primary key(user_id, key));

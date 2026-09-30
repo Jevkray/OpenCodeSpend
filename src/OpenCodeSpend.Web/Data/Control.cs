@@ -581,8 +581,10 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
         if (backends.Count == 0) return (false, new(), 0, new(), LastError ?? "сервер opencode не найден");
         try
         {
-            var raw = new List<Node>();
-            var seen = new HashSet<string>();
+            // Собираем данные со ВСЕХ backend-ов сразу: у одного и того же id на разных портах
+            // статус может отличаться (один процесс отдаёт busy, другой — пусто). Активный побеждает.
+            var metaById = new Dictionary<string, (Meta Meta, (string url, string? password) Backend)>();
+            var statusById = new Dictionary<string, string>();
             foreach (var b in backends)
             {
                 try
@@ -598,15 +600,25 @@ public sealed class OpencodeControl(SpendConfig config, ILogger<OpencodeControl>
 
                     var meta = ParseSessions(sessionsJson);
                     var statuses = await FetchStatusesAsync(http, b.url, meta.Select(m => m.Directory), ct);
-                    foreach (var m in meta)
-                    {
-                        if (!seen.Add(m.Id)) continue;   // id уже пришёл с другого backend-а — не дублируем
-                        statuses.TryGetValue(m.Id, out var statusType);
-                        raw.Add(new Node(m.Id, m.Title, m.Agent, m.Updated, m.Parent, PhaseFor(statusType), IsActiveStatus(statusType), null));
-                        _sessionBackend[m.Id] = b;       // запоминаем backend, чтобы «стоп» ушёл именно туда
-                    }
+
+                    // метаданные: первое вхождение id решает, какому backend-у принадлежит сессия (для «стоп»)
+                    foreach (var m in meta) metaById.TryAdd(m.Id, (m, b));
+
+                    // статусы объединяем: активный статус перезаписывает пустой/завершённый, пустой активный не затирает
+                    foreach (var (id, type) in statuses)
+                        if (!statusById.TryGetValue(id, out var prev) || (IsActiveStatus(type) && !IsActiveStatus(prev)))
+                            statusById[id] = type;
                 }
                 catch { InvalidateBackends(); }
+            }
+
+            var raw = new List<Node>();
+            foreach (var (id, entry) in metaById)
+            {
+                statusById.TryGetValue(id, out var statusType);
+                var m = entry.Meta;
+                raw.Add(new Node(m.Id, m.Title, m.Agent, m.Updated, m.Parent, PhaseFor(statusType), IsActiveStatus(statusType), null));
+                _sessionBackend[id] = entry.Backend;   // запоминаем backend, чтобы «стоп» ушёл именно туда
             }
 
             // если активен потомок — родитель тоже активен

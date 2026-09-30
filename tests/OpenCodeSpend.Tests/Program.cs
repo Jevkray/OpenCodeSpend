@@ -100,6 +100,8 @@ try
     var pb = await profile.PeriodAsync(epoch, epoch, epoch, "uB");
     Check(pa.today == 0.5m && pb.today == 7m, "история профиля изолирована");
 
+    await profile.ReplaceModelsAsync(new List<SiteModelRow> { new("p", "m", 0.5m, 1) }, "uA");
+    await profile.ReplaceModelsAsync(new List<SiteModelRow> { new("p", "m", 7m, 1), new("p2", "m2", 1m, 1) }, "uB");
     var sa = await profile.SummaryAsync("UTC", "uA");
     Check(sa.ContainsKey("byModel") && ((System.Collections.ICollection)sa["byModel"]).Count == 1, "свод профиля не смешивает пользователей");
     Check((await profile.BySessionAsync(50, "uB")).Count == 1, "чаты изолированы");

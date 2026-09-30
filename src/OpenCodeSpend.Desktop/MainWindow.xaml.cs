@@ -2,6 +2,7 @@
 using System.Text.Json;
 using System.Windows;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Logging;
 using Microsoft.Web.WebView2.Core;
 using OpenCodeSpend.Data;
 
@@ -85,6 +86,9 @@ public partial class MainWindow : Window
             _app = await Task.Run(() => Server.Build(CollectorArgs(), _url));
             await _app.StartAsync();
             _links = _app.Services.GetService(typeof(LinkStore)) as LinkStore;
+
+            // ярлык на рабочем столе чинится сам: иконка должна смотреть на текущий exe, а не на старую папку
+            EnsureDesktopShortcut(_app.Logger);
 
             await Web.EnsureCoreWebView2Async();
             Web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x0a, 0x0d, 0x13);
@@ -181,6 +185,49 @@ public partial class MainWindow : Window
         }
         catch { }
         Environment.Exit(0);
+    }
+
+    /// <summary>Создаёт или чинит ярлык «OpenCode Spend» на рабочем столе: цель и иконка указывают на текущий exe.
+    /// Чужой ярлык (TargetPath на другой файл) не трогаем. Ошибка ярлыка не должна ронять приложение.</summary>
+    private static void EnsureDesktopShortcut(ILogger log)
+    {
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(exe)) return;
+            var desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop");
+            var lnk = Path.Combine(desktop, "OpenCode Spend.lnk");
+            var shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType is null) return;
+            dynamic shell = Activator.CreateInstance(shellType)!;
+            var icon = exe + ",0";
+
+            if (!File.Exists(lnk))
+            {
+                dynamic sc = shell.CreateShortcut(lnk);
+                sc.TargetPath = exe;
+                sc.WorkingDirectory = Path.GetDirectoryName(exe)!;
+                sc.IconLocation = icon;
+                sc.Save();
+                log.LogInformation("Ярлык на рабочем столе создан: {Lnk}", lnk);
+                return;
+            }
+
+            dynamic existing = shell.CreateShortcut(lnk);
+            var target = (string)existing.TargetPath;
+            if (!string.Equals(target, exe, StringComparison.OrdinalIgnoreCase))
+            {
+                log.LogInformation("Ярлык на рабочем столе ведёт на другой exe — не трогаем: {Target}", target);
+                return;
+            }
+            if (!string.Equals((string)existing.IconLocation, icon, StringComparison.OrdinalIgnoreCase))
+            {
+                existing.IconLocation = icon;
+                existing.Save();
+                log.LogInformation("Ярлык на рабочем столе починен: {Lnk}", lnk);
+            }
+        }
+        catch (Exception e) { log.LogWarning(e, "не удалось создать/починить ярлык на рабочем столе"); }
     }
 
     /// <summary>Заглушка — локальная страница внутри того же окна.

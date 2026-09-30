@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace OpenCodeSpend.Data;
 
@@ -18,10 +19,11 @@ public sealed record SiteUsage(
     decimal Cost, string? SessionId, string? KeyId);
 
 /// <summary>Тянет данные профиля через JSON API консоли opencode.ai по сессионной cookie.</summary>
-public sealed class ProfileClient
+public sealed class ProfileClient(SpendStore state, ILogger<ProfileClient> log)
 {
     private const string Api = "https://opencode.ai/console/api";
     private const decimal Unit = 100_000_000m; // microCents → USD (1 USD = 100M)
+    private string? _org; // найденный org id держим в памяти, чтобы не читать БД каждый тик
 
     /// <summary>GET JSON из консольного API. null — если ответ не 200.</summary>
     private async Task<string?> GetJsonAsync(string path, string cookie, string? org, CancellationToken ct)
@@ -38,20 +40,41 @@ public sealed class ProfileClient
         return await resp.Content.ReadAsStringAsync(ct);
     }
 
-    /// <summary>workspace, если задан; иначе первый org из /orgs.</summary>
+    /// <summary>org id: пользовательская настройка важнее всего, затем кэш на диске, затем первый org из /orgs.</summary>
     private async Task<string?> ResolveOrgAsync(string cookie, string workspace, CancellationToken ct)
     {
-        if (!string.IsNullOrWhiteSpace(workspace)) return workspace;
+        if (!string.IsNullOrWhiteSpace(workspace)) return workspace.Trim();
+        if (!string.IsNullOrWhiteSpace(_org)) return _org;
+
+        var cached = await state.GetStateAsync("zen_workspace", null, ct);
+        if (!string.IsNullOrWhiteSpace(cached)) { _org = cached; return cached; }
+
         var json = await GetJsonAsync("/orgs", cookie, null, ct);
-        if (json is null) return null;
+        if (json is null)
+        {
+            log.LogWarning("не удалось определить org id opencode: запрос /orgs не удался (сессия?)");
+            return null;
+        }
         try
         {
             using var doc = JsonDocument.Parse(json);
-            return doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0
+            var id = doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0
                 ? Str(doc.RootElement[0], "id")
                 : null;
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                log.LogWarning("не удалось определить org id opencode: /orgs вернул пустой список");
+                return null;
+            }
+            _org = id;
+            await state.SetStateAsync("zen_workspace", id, null, ct); // кэш на диск — переживает перезапуск
+            return id;
         }
-        catch { return null; }
+        catch (Exception e)
+        {
+            log.LogWarning(e, "не удалось разобрать ответ /orgs");
+            return null;
+        }
     }
 
     private static string? Str(JsonElement e, string name)
@@ -147,66 +170,69 @@ public sealed class ProfileClient
         catch { return (null, "консоль: не удалось разобрать лимиты"); }
     }
 
-    /// <summary>Запрос истории трат с курсором: записи и следующий курсор.</summary>
-    private async Task<(List<SiteUsage> Rows, string? NextCursor)> FetchUsageRawAsync(
-        string cookie, string? org, string? cursor, int pageSize, CancellationToken ct)
+    /// <summary>Дневная сводка трат из консоли: одна запись на календарный день.</summary>
+    private async Task<List<SiteUsage>> FetchUsageDaysAsync(string cookie, string? org, CancellationToken ct)
     {
-        var path = $"/usage/rows?range=30d&pageSize={pageSize}";
-        if (!string.IsNullOrEmpty(cursor)) path += $"&cursor={Uri.EscapeDataString(cursor)}";
-        var json = await GetJsonAsync(path, cookie, org, ct);
-        if (json is null) return (new(), null);
+        var json = await GetJsonAsync("/usage/cost-by-day?range=30d", cookie, org, ct);
+        if (json is null) return new();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return new();
+            var rows = new List<SiteUsage>();
+            foreach (var it in doc.RootElement.EnumerateArray())
+            {
+                var date = Str(it, "date");
+                if (date is null || !DateTimeOffset.TryParse(date, CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var d))
+                    continue;
+                rows.Add(new SiteUsage(
+                    "day:" + date, d, null, null, null,
+                    Lng(it, "totalTokens"), 0, 0, 0,
+                    Dec(it, "totalCostMicroCents") / Unit,
+                    null, null));
+            }
+            return rows;
+        }
+        catch { return new(); }
+    }
+
+    /// <summary>Дневная сводка трат (консольный API отдаёт агрегаты по дням, не отдельные записи).</summary>
+    public async Task<List<SiteUsage>> FetchUsagePageAsync(string cookie, string workspace, int page, CancellationToken ct = default)
+    {
+        var org = await ResolveOrgAsync(cookie, workspace, ct);
+        return await FetchUsageDaysAsync(cookie, org, ct);
+    }
+
+    /// <summary>Совместимость: дневная сводка приходит одним запросом, страницы не нужны.</summary>
+    public Task<List<SiteUsage>> FetchUsageAllAsync(string cookie, string workspace, int maxPages, CancellationToken ct = default)
+        => FetchUsagePageAsync(cookie, workspace, 1, ct);
+
+    public async Task<(List<SiteUsage> rows, string? error)> FetchUsageAsync(string cookie, string workspace, CancellationToken ct = default)
+        => (await FetchUsagePageAsync(cookie, workspace, 1, ct), null);
+
+    /// <summary>Разбивка трат по моделям из консоли: готовый агрегат за период.</summary>
+    public async Task<List<SiteModelRow>> FetchModelsAsync(string cookie, string workspace, CancellationToken ct = default)
+    {
+        var org = await ResolveOrgAsync(cookie, workspace, ct);
+        var json = await GetJsonAsync("/usage/models?range=30d", cookie, org, ct);
+        if (json is null) return new();
         try
         {
             using var doc = JsonDocument.Parse(json);
             if (!doc.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
-                return (new(), null);
-            var rows = new List<SiteUsage>();
+                return new();
+            var list = new List<SiteModelRow>();
             foreach (var it in items.EnumerateArray())
-            {
-                var created = Str(it, "createdAt");
-                rows.Add(new SiteUsage(
-                    IdStr(it, "id") ?? "",
-                    DateTimeOffset.TryParse(created, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out var d) ? d : DateTimeOffset.UtcNow,
-                    Str(it, "model"), Str(it, "provider"), null,
-                    Lng(it, "inputTokens"), Lng(it, "outputTokens"), Lng(it, "reasoningTokens"), Lng(it, "cacheReadTokens"),
-                    Dec(it, "costMicroCents") / Unit,
-                    null, Str(it, "serviceApiKeyId")));
-            }
-            return (rows, Str(doc.RootElement, "nextCursor"));
+                list.Add(new SiteModelRow(
+                    Str(it, "provider") ?? "?",
+                    Str(it, "model") ?? "?",
+                    Dec(it, "totalCostMicroCents") / Unit,
+                    Lng(it, "totalRequests")));
+            return list.OrderByDescending(m => m.Cost).ToList();
         }
-        catch { return (new(), null); }
+        catch { return new(); }
     }
-
-    /// <summary>Одна страница истории трат (100 записей). page игнорируется — API курсорный.</summary>
-    public async Task<List<SiteUsage>> FetchUsagePageAsync(string cookie, string workspace, int page, CancellationToken ct = default)
-    {
-        var org = await ResolveOrgAsync(cookie, workspace, ct);
-        var (rows, _) = await FetchUsageRawAsync(cookie, org, null, 100, ct);
-        return rows;
-    }
-
-    /// <summary>Вся история: листаем по курсору, пока приходят новые записи.</summary>
-    public async Task<List<SiteUsage>> FetchUsageAllAsync(string cookie, string workspace, int maxPages, CancellationToken ct = default)
-    {
-        var org = await ResolveOrgAsync(cookie, workspace, ct);
-        var all = new List<SiteUsage>();
-        var seen = new HashSet<string>();
-        string? cursor = null;
-        for (var i = 0; i < maxPages; i++)
-        {
-            var (rows, next) = await FetchUsageRawAsync(cookie, org, cursor, 100, ct);
-            if (rows.Count == 0) break;
-            var added = rows.Count(r => seen.Add(r.Id));
-            all.AddRange(rows);
-            if (string.IsNullOrEmpty(next) || added == 0) break;
-            cursor = next;
-            await Task.Delay(120, ct);
-        }
-        return all;
-    }
-
-    public async Task<(List<SiteUsage> rows, string? error)> FetchUsageAsync(string cookie, string workspace, CancellationToken ct = default)
-        => (await FetchUsagePageAsync(cookie, workspace, 1, ct), null);
 
     /// <summary>Платежи и подписка из консольного API.</summary>
     public async Task<(List<SitePayment> payments, string? liteSubId, string? error)> FetchBillingAsync(
@@ -296,7 +322,9 @@ public sealed class ProfileSyncService(ProfileClient client, ProfileStore store,
             {
                 _lastUsage[key] = now;
                 var rows = await client.FetchUsagePageAsync(cookie, config.ZenWorkspace, 1, ct);
-                if (rows.Count > 0) await store.UpsertUsageAsync(rows, uid, ct);
+                if (rows.Count > 0) await store.ReplaceUsageAsync(rows, uid, ct);
+                var models = await client.FetchModelsAsync(cookie, config.ZenWorkspace, ct);
+                if (models.Count > 0) await store.ReplaceModelsAsync(models, uid, ct);
             }
 
             // полная история и платежи — раз в FullCrawlMinutes
@@ -307,7 +335,7 @@ public sealed class ProfileSyncService(ProfileClient client, ProfileStore store,
             {
                 _lastFullCrawl[key] = now;
                 var all = await client.FetchUsageAllAsync(cookie, config.ZenWorkspace, config.MaxHistoryPages, ct);
-                if (all.Count > 0) await store.UpsertUsageAsync(all, uid, ct);
+                if (all.Count > 0) await store.ReplaceUsageAsync(all, uid, ct);
                 var (payments, sub, billingErr) = await client.FetchBillingAsync(cookie, config.ZenWorkspace, ct);
                 if (payments.Count > 0 || sub is not null) await store.SavePaymentsAsync(payments, sub, uid, ct);
                 e3 = billingErr;

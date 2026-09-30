@@ -60,8 +60,12 @@ public sealed class ProfilePushDto
     public SiteLimits? Limits { get; set; }
     public List<SiteUsageDto>? Usage { get; set; }
     public List<SitePayment>? Payments { get; set; }
+    public List<SiteModelRow>? Models { get; set; }
     public string? LiteSubId { get; set; }
 }
+
+/// <summary>Агрегат трат по модели из консоли opencode (не построчные записи).</summary>
+public sealed record SiteModelRow(string Provider, string Model, decimal Cost, long Count);
 
 public sealed class DeviceSyncDto
 {

@@ -20,8 +20,6 @@
       colDate: "Дата", colPayment: "Платёж", colAmount: "Сумма",
       modelsSite: "Модели (сайт)",
       colCost: "Стоимость",
-      recentSite: "Последние запросы (сайт)",
-      colTime: "Время", colModel: "Модель", colIn: "Вх.", colOut: "Вых.", colCache: "Кэш",
       localTitle: "Локально — что выполняется сейчас",
       live: "Прямой эфир",
       activeSessions: "Активные сессии", close: "Закрыть", refresh: "Обновить",
@@ -61,10 +59,9 @@
       noProfileData: "Нет данных профиля. Нажми «Обновить профиль».",
       go5h: "Go: 5 часов", goWeek: "Go: неделя", goMonth: "Go: месяц",
       updated: "обновлено ", noDataLower: "нет данных", forMonth: " за месяц",
-      noRecords: "Нет записей", noPayments: "Нет платежей",
+      noPayments: "Нет платежей",
       modePaidShort: "платные", allLower: "все",
       modelOne: "модель", modelMany: "моделей",
-      recordOne: "запись", recordMany: "записей",
       subPlan: "План", subId: "ID подписки", subLast: "Последний платёж", subNext: "Следующий ~",
       payOne: "платёж", payMany: "платежей",
       noDataYet: "Данных пока нет: подключите компьютер с opencode",
@@ -109,8 +106,6 @@
       colDate: "Date", colPayment: "Payment", colAmount: "Amount",
       modelsSite: "Models (site)",
       colCost: "Cost",
-      recentSite: "Recent requests (site)",
-      colTime: "Time", colModel: "Model", colIn: "In", colOut: "Out", colCache: "Cache",
       localTitle: "Local — running now",
       live: "Live",
       activeSessions: "Active sessions", close: "Close", refresh: "Refresh",
@@ -150,10 +145,9 @@
       noProfileData: 'No profile data. Press "Refresh profile".',
       go5h: "Go: 5 hours", goWeek: "Go: week", goMonth: "Go: month",
       updated: "updated ", noDataLower: "no data", forMonth: " for the month",
-      noRecords: "No records", noPayments: "No payments",
+      noPayments: "No payments",
       modePaidShort: "paid", allLower: "all",
       modelOne: "model", modelMany: "models",
-      recordOne: "record", recordMany: "records",
       subPlan: "Plan", subId: "Subscription ID", subLast: "Last payment", subNext: "Next ~",
       payOne: "payment", payMany: "payments",
       noDataYet: "No data yet: connect a computer with opencode",
@@ -697,22 +691,6 @@
     $("#siteModelsHint").textContent = rows.length + " " + plural(rows.length, t("modelOne"), t("modelMany")) + " · " + (state.mode === "paid" ? t("modePaidShort") : t("allLower"));
   }
 
-  function renderSiteRecent(recent) {
-    const tb = $("#siteRecentTable tbody");
-    let rows = recent || [];
-    if (state.mode === "paid") rows = rows.filter((r) => Number(r.cost) > 0);
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">' + t("noRecords") + '</td></tr>'; $("#siteRecentHint").textContent = ""; return; }
-    tb.innerHTML = rows.slice(0, 60).map((r) => `<tr>
-      <td>${new Date(r.time).toLocaleTimeString(locale())}</td>
-      <td>${esc(r.model || "?")}</td>
-      <td class="num">${compact(r.input)}</td>
-      <td class="num">${compact(r.output)}</td>
-      <td class="num">${compact(r.cacheRead)}</td>
-      <td class="num">${usd(r.cost)}</td>
-    </tr>`).join("");
-    $("#siteRecentHint").textContent = rows.length + " " + plural(rows.length, t("recordOne"), t("recordMany")) + " · " + (state.mode === "paid" ? t("modePaidShort") : t("allLower"));
-  }
-
   function renderSubscription(payments, liteSub) {
     const el = $("#subscription");
     const list = payments || [];
@@ -742,7 +720,6 @@
       renderSiteLimits(p.limits);
       renderSiteDaily(p.summary.byDay);
       renderSiteModels(p.summary.byModel);
-      renderSiteRecent(p.summary.recent);
       renderSubscription(p.payments, p.liteSubscriptionId);
 
       // данных ещё нет — на сервере их присылает приложение с opencode
@@ -760,7 +737,6 @@
     document.querySelectorAll("#modes button").forEach((x) => x.classList.toggle("active", x === btn));
     if (state.profile) {
       renderSiteModels(state.profile.summary.byModel);
-      renderSiteRecent(state.profile.summary.recent);
     }
   });
 
