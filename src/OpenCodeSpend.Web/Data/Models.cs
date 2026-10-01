@@ -117,10 +117,10 @@ public sealed class SpendConfig
 
     public string TimeZone { get; set; } = "UTC";
 
-    public int SyncIntervalSeconds { get; set; } = 10;
+    public int SyncIntervalSeconds { get; set; } = 5;
 
     /// <summary>РџРµСЂРёРѕРґ С„РѕРЅРѕРІРѕРіРѕ РѕР±РЅРѕРІР»РµРЅРёСЏ РїСЂРѕС„РёР»СЏ opencode, СЃРµРє.</summary>
-    public int ProfileSyncSeconds { get; set; } = 10;
+    public int ProfileSyncSeconds { get; set; } = 120;
 
     /// <summary>РљР°Рє С‡Р°СЃС‚Рѕ РїРµСЂРµСЃРѕР±РёСЂР°С‚СЊ РІСЃСЋ РёСЃС‚РѕСЂРёСЋ С‚СЂР°С‚, РјРёРЅСѓС‚.</summary>
     public int FullCrawlMinutes { get; set; } = 10;

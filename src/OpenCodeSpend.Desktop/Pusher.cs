@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -34,8 +35,20 @@ public sealed class Pusher
     public int PushedUsage { get; private set; }
     public int PushedSite { get; private set; }
 
-    /// <summary>Счётчик вызовов: профиль отправляем раз в 10, он тяжёлый.</summary>
-    private int _profileTick;
+    /// <summary>Профиль тяжёлый — отправляем его не чаще раза в минуту (отдельный счётчик времени).</summary>
+    private static readonly TimeSpan ProfileInterval = TimeSpan.FromSeconds(60);
+
+    /// <summary>Защита от наложения: пока предыдущая отправка не завершилась, новую не начинаем.</summary>
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
+    /// <summary>Хеш последнего успешно отправленного тела: совпал — во внешнюю сеть не идём.</summary>
+    private string? _lastSentHash;
+
+    private DateTimeOffset _lastProfileAt = DateTimeOffset.MinValue;
+
+    /// <summary>Последний прочитанный профиль: обновляем раз в минуту, кладём во все отправки.
+    /// Так тело не «мигает» профилем и хеш стабилен, когда ничего не меняется.</summary>
+    private JsonNode? _profile;
 
     public Pusher(string serverUrl, string deviceToken, string localUrl, string? deviceId = null)
     {
@@ -68,10 +81,13 @@ public sealed class Pusher
             File.WriteAllText(_statePath, JsonSerializer.Serialize(new { usageMs, siteMs, cookie }));
     }
 
-    /// <summary>Один вызов: локальные данные + снимок сессий → сервер, команды «стоп» ← сервер.</summary>
+    /// <summary>Один вызов: локальные данные + снимок сессий → сервер, команды «стоп» ← сервер.
+    /// Если тело не изменилось с прошлой удачной отправки — во внешнюю сеть не обращаемся.</summary>
     public async Task SyncAsync()
     {
         if (Revoked || string.IsNullOrWhiteSpace(_serverUrl)) return;
+        // таймер и событийный путь могут совпасть — наложенный вызов пропускаем
+        if (!await _gate.WaitAsync(0)) return;
         try
         {
             var (usageMs, siteMs, lastCookie) = ReadState();
@@ -87,11 +103,10 @@ public sealed class Pusher
             var siteJson = await _http.GetStringAsync($"{_localUrl}/api/export/site-usage?sinceMs={siteMs}");
             var site = JsonNode.Parse(siteJson)?.AsArray() ?? new JsonArray();
 
-            JsonNode? profile = null;
-            if (++_profileTick >= 10)
+            if (DateTimeOffset.UtcNow - _lastProfileAt >= ProfileInterval)
             {
-                _profileTick = 0;
-                profile = JsonNode.Parse(await _http.GetStringAsync($"{_localUrl}/api/export/profile"));
+                _lastProfileAt = DateTimeOffset.UtcNow;
+                _profile = JsonNode.Parse(await _http.GetStringAsync($"{_localUrl}/api/export/profile"));
             }
 
             var body = new JsonObject
@@ -106,11 +121,22 @@ public sealed class Pusher
                     ["sessions"] = control.DeepClone(),
                 },
             };
-            if (profile is not null) body["profile"] = profile.DeepClone();
+            if (_profile is not null) body["profile"] = _profile.DeepClone();
+
+            var json = body.ToJsonString();
+            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
+            if (hash == _lastSentHash)
+            {
+                // ничего не изменилось — во внешнюю сеть не идём, watermarks уже зафиксированы прошлой отправкой
+                PushedUsage = usage.Count;
+                PushedSite = site.Count;
+                LastError = null;
+                return;
+            }
 
             using var req = new HttpRequestMessage(HttpMethod.Post, _serverUrl + "/api/device/sync")
             {
-                Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
             };
             req.Headers.TryAddWithoutValidation("X-Device-Token", _deviceToken);
             using var resp = await _http.SendAsync(req);
@@ -125,6 +151,14 @@ public sealed class Pusher
                 LastError = $"{(int)resp.StatusCode}: {text[..Math.Min(200, text.Length)]}";
                 return;
             }
+            _lastSentHash = hash;   // тело принято — при повторе того же не шлём
+
+            // watermarks — по максимальному времени отправленного (только после успеха, чтобы не потерять данные)
+            if (usage.Count > 0)
+                usageMs = usage.Select(u => u!["ts"]!.GetValue<DateTimeOffset>().ToUnixTimeMilliseconds()).Max();
+            if (site.Count > 0)
+                siteMs = site.Select(s => s!["time"]!.GetValue<DateTimeOffset>().ToUnixTimeMilliseconds()).Max();
+            WriteState(usageMs, siteMs, lastCookie);
 
             // список компьютеров аккаунта — локальная панель показывает его пользователю
             try
@@ -157,13 +191,6 @@ public sealed class Pusher
             }
             catch { }
 
-            // watermarks — по максимальному времени отправленного
-            if (usage.Count > 0)
-                usageMs = usage.Select(u => u!["ts"]!.GetValue<DateTimeOffset>().ToUnixTimeMilliseconds()).Max();
-            if (site.Count > 0)
-                siteMs = site.Select(s => s!["time"]!.GetValue<DateTimeOffset>().ToUnixTimeMilliseconds()).Max();
-            WriteState(usageMs, siteMs, lastCookie);
-
             PushedUsage = usage.Count;
             PushedSite = site.Count;
             LastError = null;
@@ -171,6 +198,10 @@ public sealed class Pusher
         catch (Exception e)
         {
             LastError = e.Message;
+        }
+        finally
+        {
+            _gate.Release();
         }
     }
 }

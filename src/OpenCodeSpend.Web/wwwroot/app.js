@@ -194,7 +194,7 @@
 
   const locale = () => (LANG === "ru" ? "ru-RU" : "en-US");
 
-  const state = { range: "30d", mode: "paid", charts: {}, timer: null, local: null, profile: null, expanded: new Set(), linked: false, online: false, lastSync: 0, serverUrl: "", pairTimer: null, account: "", devices: [], selfDeviceId: "" };
+  const state = { range: "30d", mode: "paid", charts: {}, timer: null, local: null, profile: null, expanded: new Set(), linked: false, online: false, lastSync: 0, serverUrl: "", pairTimer: null, account: "", devices: [], selfDeviceId: "", monthOpen: false };
 
   const PALETTE = ["#4f8cff", "#35c88a", "#f5a524", "#a78bfa", "#f2555a", "#22d3ee",
                    "#f472b6", "#84cc16", "#fb923c", "#60a5fa", "#e879f9", "#14b8a6"];
@@ -629,6 +629,7 @@
   function renderMonthPicker(months) {
     const host = $("#dayMonth");
     if (months.length <= 1) {
+      state.monthOpen = false;
       host.innerHTML = `<span class="month-static">${esc(monthLabel(months[0]))}</span>`;
       return;
     }
@@ -637,15 +638,18 @@
         `<button type="button" class="month-item${m === state.dayMonth ? " active" : ""}" data-month="${m}">${esc(monthLabel(m))}</button>`).join("")}</div>`;
 
     const btn = $("#monthBtn"), list = $("#monthList");
+    // восстанавливаем состояние «открыт» после перерисовки данных
+    list.hidden = !state.monthOpen;
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      list.hidden = !list.hidden;
-      if (!list.hidden) document.addEventListener("click", () => { list.hidden = true; }, { once: true });
+      state.monthOpen = !state.monthOpen;
+      list.hidden = !state.monthOpen;
     });
     list.addEventListener("click", (e) => {
       const it = e.target.closest("[data-month]");
       if (!it) return;
       state.dayMonth = it.dataset.month;
+      state.monthOpen = false;
       list.hidden = true;
       if (state.profile) renderSiteDaily(state.profile.summary.byDay);
     });
@@ -1012,6 +1016,17 @@
 
   $("#dayPrev").addEventListener("click", () => shiftDayMonth(-1));
   $("#dayNext").addEventListener("click", () => shiftDayMonth(1));
+
+  // клик вне выпадающего списка месяцев закрывает его (навешивается один раз)
+  document.addEventListener("click", (e) => {
+    if (!state.monthOpen) return;
+    const host = document.getElementById("dayMonth");
+    if (host && !host.contains(e.target)) {
+      state.monthOpen = false;
+      const list = document.getElementById("monthList");
+      if (list) list.hidden = true;
+    }
+  });
 
   // переключатель языка
   $("#langBtn").addEventListener("click", () => setLang(LANG === "ru" ? "en" : "ru"));

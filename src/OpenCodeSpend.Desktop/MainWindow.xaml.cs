@@ -411,6 +411,13 @@ public partial class MainWindow : Window
         _pusherServerUrl = null;
     }
 
+    /// <summary>Период фоновой отправки: Spend:SyncIntervalSeconds, по умолчанию 5 секунд.</summary>
+    private int PushIntervalSeconds()
+    {
+        var cfg = _app?.Services.GetService(typeof(SpendConfig)) as SpendConfig;
+        return Math.Max(1, cfg?.SyncIntervalSeconds ?? 5);
+    }
+
     private void StartPusher()
     {
         try
@@ -422,8 +429,8 @@ public partial class MainWindow : Window
             var pusher = new Pusher(link.ServerUrl!, link.Token!, _url, link.DeviceId);
             _pusher = pusher;
             _pusherServerUrl = link.ServerUrl;
-            // единый канал: локальные данные и команды одним запросом раз в секунду
-            _pushTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            // единый канал: локальные данные и команды одним запросом по интервалу из настроек
+            _pushTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(PushIntervalSeconds()) };
             _pushTimer.Tick += async (_, _) =>
             {
                 await pusher.SyncAsync();
