@@ -48,7 +48,10 @@ You don't have to host your own server — just sign in and install the app:
 - **Per-model breakdown** — where exactly the budget goes.
 - **Request history** — a log of model calls.
 - **Payments and subscription** — payment status and current plan.
+- **Console-sourced data** — Go limits, payments, and the per-model / per-day breakdown come from the opencode console.
 - **Accurate active-chat tracking** — state comes from opencode itself, not from timers; sessions from all running opencode servers are collected into one tree.
+- **Change-only network sync** — the sync request body is hashed; when nothing changed no request is sent at all, so an idle app barely touches the network.
+- **Self-healing desktop shortcut** — the shortcut is recreated on launch and re-pointed if the exe moved.
 - **Status indicator on the avatar** — online / offline / connected to the server.
 - **Stop agents** — a "Stop" command is sent to the PC.
 - **Multi-account** — several accounts on one server.
@@ -76,9 +79,12 @@ A single build plays two roles. The role is set by the `Spend:Mode` config
   local port, collects data, and sends it to the server.
 
 Linking: the PC is paired to an account with a connection code (the server
-address is encrypted inside it); from then on it sends one
-`POST /api/device/sync` request per second and receives commands in the
-response. If the server replies 401, the PC is unlinked.
+address is encrypted inside it); from then on it periodically sends
+`POST /api/device/sync` and receives commands in the response. The request body
+is hashed, so when nothing changed no request is sent at all; the interval is
+set by `Spend:SyncIntervalSeconds` (5 s by default). The opencode console is
+polled every `Spend:ProfileSyncSeconds` (120 s by default), so an idle app
+barely touches the network. If the server replies 401, the PC is unlinked.
 
 ## 🚀 Quick start
 
@@ -211,6 +217,8 @@ code always works.
 | --- | --- | --- |
 | `TZ` | `Europe/Moscow` | server time zone |
 | `PAIRING_TTL` | `5` | PC pairing code lifetime, minutes |
+| `Spend:SyncIntervalSeconds` | `5` | collector: background sync interval, seconds (sends only changes) |
+| `Spend:ProfileSyncSeconds` | `120` | collector: opencode console poll interval, seconds |
 | `GOOGLE_CLIENT_ID` | `` | Google OAuth client (optional) |
 | `GOOGLE_CLIENT_SECRET` | `` | Google OAuth client secret |
 | `GITHUB_CLIENT_ID` | `` | GitHub OAuth client (optional) |
